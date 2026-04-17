@@ -251,4 +251,78 @@ async function getOpenPOs() {
   }
 }
 
-module.exports = { writeToSheet, getOpenPOs };
+// ─── Append a row to the Audit Log sheet ─────────────────────────────────────
+// Creates a header row on first write, then appends one row per submitted audit.
+
+const AUDIT_LOG_HEADERS = [
+  'Submitted At', 'Audit Type', 'Auditor', 'Supplier / Customer',
+  'PO / SO #', 'Carrier', 'Trailer #', 'Temp (°F)', 'Temp OK?',
+  'Quality Score', 'Has Discrepancy', 'Notes',
+];
+
+async function appendAuditRow(audit) {
+  if (!config.SHEETS.enabled) {
+    console.log('ℹ️  Sheets disabled — skipping audit log append');
+    return { skipped: true };
+  }
+
+  const sheetId = process.env.AUDIT_LOG_SHEET_ID;
+  if (!sheetId) {
+    console.warn('⚠️  AUDIT_LOG_SHEET_ID not set — skipping audit log append');
+    return { error: 'AUDIT_LOG_SHEET_ID not configured' };
+  }
+
+  try {
+    const auth = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+    const tabName = process.env.AUDIT_LOG_TAB || 'Audit Log';
+    const range = `'${tabName}'!A1:L1`;
+
+    // Check if headers exist — write them if the sheet is empty
+    const check = await sheets.spreadsheets.values.get({
+      spreadsheetId: sheetId,
+      range: `'${tabName}'!A1`,
+    });
+    if (!check.data.values || !check.data.values[0]?.[0]) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: sheetId,
+        range: `'${tabName}'!A1`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [AUDIT_LOG_HEADERS] },
+      });
+      console.log('📊 Audit log headers written');
+    }
+
+    const qualityLabels = ['', 'Fail', 'Pass w/ Issues', 'Pass'];
+    const row = [
+      audit.submitted_at ? dayjs(audit.submitted_at).format('M/D/YYYY h:mm A') : dayjs().format('M/D/YYYY h:mm A'),
+      audit.audit_type_name || audit.type || '—',
+      audit.auditor_name || '—',
+      audit.supplier || audit.customer || '—',
+      audit.po_number || audit.so_number || '—',
+      audit.carrier || '—',
+      audit.trailer_number || '—',
+      audit.truck_temp_f != null ? audit.truck_temp_f : '—',
+      audit.truck_temp_f != null ? (audit.temp_in_range ? 'Yes' : 'No') : '—',
+      qualityLabels[audit.quality_score] || '—',
+      audit.has_discrepancy ? 'Yes' : 'No',
+      audit.notes || '',
+    ];
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: sheetId,
+      range: `'${tabName}'!A1`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: { values: [row] },
+    });
+
+    console.log(`✅ Audit log row appended (${audit.audit_type_name || audit.type} — ${audit.po_number || audit.so_number || 'no ref'})`);
+    return { success: true };
+  } catch (err) {
+    console.error('❌ Audit log append error:', err.message);
+    return { error: err.message };
+  }
+}
+
+module.exports = { writeToSheet, getOpenPOs, appendAuditRow };

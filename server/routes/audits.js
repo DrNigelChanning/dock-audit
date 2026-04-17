@@ -258,7 +258,11 @@ router.post('/:id/discrepancies', async (req, res) => {
 router.post('/:id/submit', async (req, res) => {
   try {
     const db = await getDB;
-    const audit = db.prepare('SELECT * FROM audits WHERE id = ?').get(req.params.id);
+    const audit = db.prepare(`
+      SELECT a.*, at.name as audit_type_name
+      FROM audits a LEFT JOIN audit_types at ON a.audit_type_id = at.id
+      WHERE a.id = ?
+    `).get(req.params.id);
     if (!audit || audit.status === 'submitted') return res.status(400).json({ error: 'Invalid audit' });
 
     const lineItems     = db.prepare('SELECT * FROM audit_line_items WHERE audit_id = ? ORDER BY sort_order').all(req.params.id);
@@ -267,17 +271,41 @@ router.post('/:id/submit', async (req, res) => {
     const dateStr     = dayjs(audit.audit_date).format('YYYY-MM-DD');
     const cleanEntity = (audit.type === 'outbound' ? (audit.customer || 'Unknown') : (audit.supplier || 'Unknown')).replace(/\s+/g, '-');
     const refNum      = audit.po_number || audit.so_number || '0000';
-    const typeSlug    = (audit.type || 'audit').toUpperCase().replace(/\s+/g, '-');
+    const typeSlug    = (audit.audit_type_name || audit.type || 'audit').toUpperCase().replace(/\s+/g, '-');
     const pdfFilename = `${typeSlug}_${refNum}_${cleanEntity}_${dateStr}.pdf`;
 
-    const now = dayjs().toISOString();
-    db.prepare(`UPDATE audits SET status='submitted', submitted_at=?, pdf_filename=?, has_discrepancy=?, quality_score=?, updated_at=? WHERE id=?`)
-      .run(now, pdfFilename, hasDiscrepancy(lineItems, discrepancies, audit.temp_in_range) ? 1 : 0, deriveQualityScore(lineItems, audit.temp_in_range), now, audit.id);
+    const now         = dayjs().toISOString();
+    const hasDisc     = hasDiscrepancy(lineItems, discrepancies, audit.temp_in_range) ? 1 : 0;
+    const qualScore   = deriveQualityScore(lineItems, audit.temp_in_range);
 
+    db.prepare(`UPDATE audits SET status='submitted', submitted_at=?, pdf_filename=?, has_discrepancy=?, quality_score=?, updated_at=? WHERE id=?`)
+      .run(now, pdfFilename, hasDisc, qualScore, now, audit.id);
+
+    // Build the fully submitted audit object for downstream integrations
+    const submittedAudit = {
+      ...audit,
+      status: 'submitted',
+      submitted_at: now,
+      pdf_filename: pdfFilename,
+      has_discrepancy: hasDisc,
+      quality_score: qualScore,
+    };
+
+    // PDF — fire and forget
     const { generatePDF } = require('./pdf');
-    generatePDF({ ...audit, lineItems, discrepancies }, pdfFilename)
+    generatePDF({ ...submittedAudit, lineItems, discrepancies }, pdfFilename)
       .then(pdfPath => db.prepare('UPDATE audits SET pdf_path = ? WHERE id = ?').run(pdfPath, audit.id))
       .catch(err => console.error('PDF Error:', err));
+
+    // Email — fire and forget
+    const { sendAuditComplete } = require('../email');
+    sendAuditComplete(submittedAudit, lineItems, discrepancies)
+      .catch(err => console.error('Email Error:', err));
+
+    // Google Sheets audit log — fire and forget
+    const { appendAuditRow } = require('../sheets');
+    appendAuditRow(submittedAudit)
+      .catch(err => console.error('Sheets Error:', err));
 
     res.json({ message: 'Audit submitted', pdf_filename: pdfFilename });
   } catch (err) {
