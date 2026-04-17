@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dock Audit — Question Editor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d0f12; --surface: #151820; --surface2: #1c2030;
+    --border: #252a38; --border-active: #3a4255;
+    --text: #e8eaf0; --text-dim: #6b7489; --text-muted: #3d4358;
+    --yellow: #f5c842; --red: #ff4757; --red-dim: rgba(255,71,87,.12);
+    --green: #00d4aa;
+    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; min-height: 100vh; }
+  .shell { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-badge { width: 32px; height: 32px; background: #00d4aa; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .logo-text { font-weight: 700; font-size: 15px; letter-spacing: -.3px; }
+  .logo-sub { font-family: var(--mono); font-size: 10px; color: var(--text-dim); margin-top: 1px; }
+  .header-actions { display: flex; gap: 8px; align-items: center; }
+
+  /* Server config bar */
+  .server-bar {
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    padding: 8px 24px; display: flex; align-items: center; gap: 12px;
+  }
+  .server-bar label { font-family: var(--mono); font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .server-bar input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-family: var(--mono); font-size: 12px;
+    padding: 5px 10px; width: 240px; outline: none;
+  }
+  .server-bar input:focus { border-color: var(--green); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.err { background: var(--red); }
+  .status-dot.pending { background: var(--yellow); }
+  .status-text { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+
+  .tab-bar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; display: flex; align-items: stretch;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .tab-bar::-webkit-scrollbar { display: none; }
+  .tab {
+    padding: 0 16px; height: 44px; font-size: 12px; font-weight: 600;
+    font-family: var(--mono); letter-spacing: .4px; text-transform: uppercase;
+    cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-dim);
+    transition: all .15s; display: flex; align-items: center; gap: 8px;
+    user-select: none; white-space: nowrap; flex-shrink: 0;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { border-bottom-color: var(--tab-color, #00d4aa); color: var(--tab-color, #00d4aa); }
+  .tab-count { background: var(--surface2); border-radius: 20px; padding: 1px 7px; font-size: 10px; color: var(--text-dim); }
+  .tab.active .tab-count { color: var(--tab-color, #00d4aa); }
+  .tab-edit-btn { width: 18px; height: 18px; border-radius: 4px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 12px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
+  .tab-edit-btn:hover { background: var(--surface2); color: var(--text); }
+  .tab-add { padding: 0 16px; height: 44px; font-size: 12px; font-weight: 600; font-family: var(--mono); color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 6px; border: none; background: transparent; transition: color .15s; white-space: nowrap; flex-shrink: 0; border-bottom: 2px solid transparent; }
+  .tab-add:hover { color: var(--text); }
+
+  main { flex: 1; padding: 24px; max-width: 860px; margin: 0 auto; width: 100%; }
+
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; margin-top: 28px; }
+  .section-header:first-child { margin-top: 0; }
+  .section-label { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); }
+  .question-list { display: flex; flex-direction: column; gap: 6px; }
+
+  .q-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; align-items: stretch; overflow: hidden; transition: border-color .15s; cursor: default; }
+  .q-card:hover { border-color: var(--border-active); }
+  .q-card.inactive { opacity: .4; }
+  .q-card.dragging { opacity: .5; transform: scale(.98); border-style: dashed; }
+  .q-card.drag-over { border-color: #00d4aa; }
+
+  .note-card { background: rgba(245,200,66,.04); border: 1px solid rgba(245,200,66,.2); border-left: 3px solid var(--yellow); border-radius: var(--radius); display: flex; align-items: stretch; overflow: hidden; transition: border-color .15s; cursor: default; }
+  .note-card:hover { border-color: rgba(245,200,66,.4); border-left-color: var(--yellow); }
+  .note-card.inactive { opacity: .4; }
+  .note-card.dragging { opacity: .5; transform: scale(.98); }
+  .note-card.drag-over { border-color: #00d4aa; border-left-color: #00d4aa; }
+
+  .q-drag-handle { width: 36px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); cursor: grab; flex-shrink: 0; font-size: 16px; transition: color .15s; }
+  .q-card:hover .q-drag-handle, .note-card:hover .q-drag-handle { color: var(--text-dim); }
+  .q-body { flex: 1; padding: 12px 12px 12px 0; display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .q-info { flex: 1; min-width: 0; }
+  .q-text { font-size: 14px; font-weight: 500; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note-text { font-size: 13px; color: rgba(245,200,66,.85); line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .q-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .note-icon { font-size: 16px; padding: 0 4px 0 0; flex-shrink: 0; }
+
+  .type-badge { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; background: var(--surface2); color: var(--text-dim); border: 1px solid var(--border); }
+  .type-badge.yn     { background: rgba(100,180,255,.1); color: #64b4ff; border-color: rgba(100,180,255,.2); }
+  .type-badge.text   { background: rgba(200,150,255,.1); color: #c896ff; border-color: rgba(200,150,255,.2); }
+  .type-badge.number { background: rgba(245,200,66,.1);  color: var(--yellow); border-color: rgba(245,200,66,.2); }
+  .type-badge.photo  { background: rgba(0,212,170,.1);   color: #00d4aa; border-color: rgba(0,212,170,.2); }
+  .type-badge.select { background: rgba(255,107,53,.1);  color: #ff6b35; border-color: rgba(255,107,53,.2); }
+  .type-badge.temp   { background: rgba(255,71,87,.1);   color: var(--red); border-color: rgba(255,71,87,.2); }
+  .type-badge.note   { background: rgba(245,200,66,.1);  color: var(--yellow); border-color: rgba(245,200,66,.2); }
+
+  .req-dot { font-size: 11px; color: var(--text-muted); }
+  .req-dot.required { color: var(--red); }
+  .q-actions { display: flex; align-items: center; gap: 4px; padding-right: 10px; }
+
+  .btn { font-family: var(--sans); font-size: 13px; font-weight: 600; border: none; border-radius: 6px; cursor: pointer; padding: 7px 14px; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-primary { background: #00d4aa; color: #000; }
+  .btn-primary:hover:not(:disabled) { filter: brightness(1.1); }
+  .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-dim); }
+  .btn-outline:hover:not(:disabled) { border-color: var(--border-active); color: var(--text); }
+  .btn-ghost { background: transparent; color: var(--text-dim); padding: 6px 10px; }
+  .btn-ghost:hover:not(:disabled) { background: var(--surface2); color: var(--text); }
+  .btn-yellow { background: var(--yellow); color: #000; font-weight: 700; }
+  .btn-yellow:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-sm { font-size: 12px; padding: 5px 10px; }
+
+  .icon-btn { width: 30px; height: 30px; border-radius: 6px; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px; background: transparent; color: var(--text-dim); transition: all .15s; }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); }
+  .icon-btn.delete:hover { background: var(--red-dim); color: var(--red); }
+  .toggle { width: 34px; height: 20px; background: var(--border); border-radius: 10px; position: relative; cursor: pointer; transition: background .2s; flex-shrink: 0; border: none; }
+  .toggle::after { content: ''; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; background: white; border-radius: 50%; transition: transform .2s; }
+  .toggle.on { background: #00d4aa; }
+  .toggle.on::after { transform: translateX(14px); }
+
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 200; display: flex; align-items: center; justify-content: center; padding: 24px; backdrop-filter: blur(4px); opacity: 0; pointer-events: none; transition: opacity .2s; }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+  .modal { background: var(--surface); border: 1px solid var(--border-active); border-radius: 12px; width: 100%; max-width: 520px; transform: translateY(12px); transition: transform .2s; overflow: hidden; }
+  .overlay.open .modal { transform: translateY(0); }
+  .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+  .modal-title { font-weight: 700; font-size: 16px; }
+  .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto; }
+  .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; font-weight: 600; color: var(--text-dim); font-family: var(--mono); text-transform: uppercase; letter-spacing: .5px; }
+  .field input, .field select, .field textarea { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 14px; font-family: var(--sans); padding: 9px 12px; outline: none; transition: border-color .15s; width: 100%; }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: #00d4aa; }
+  .field textarea { resize: vertical; min-height: 80px; }
+  .field select option { background: var(--surface2); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field-hint { font-size: 11px; color: var(--text-dim); }
+
+  .color-row { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 4px; }
+  .color-swatch { width: 26px; height: 26px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: all .15s; flex-shrink: 0; }
+  .color-swatch.selected { border-color: white; transform: scale(1.2); }
+  .options-list { display: flex; flex-direction: column; gap: 6px; }
+  .option-row { display: flex; align-items: center; gap: 6px; }
+  .option-row input { flex: 1; }
+  .empty { text-align: center; padding: 48px 24px; color: var(--text-dim); }
+  .empty-icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-title { font-weight: 600; font-size: 15px; color: var(--text); margin-bottom: 6px; }
+  .danger-note { background: var(--red-dim); border: 1px solid rgba(255,71,87,.2); border-radius: 6px; padding: 10px 12px; font-size: 12px; color: var(--red); }
+
+  .toast-wrap { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast { background: var(--surface); border: 1px solid var(--border-active); border-radius: 8px; padding: 10px 16px; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 8px; animation: slideIn .2s ease; }
+  .toast.success { border-color: rgba(0,212,170,.4); }
+  .toast.error   { border-color: rgba(255,71,87,.4); }
+  @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+  .section-row { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 10px 12px; display: flex; align-items: center; gap: 10px; cursor: grab; user-select: none; transition: border-color .15s; }
+  .section-row:hover { border-color: var(--border-active); }
+  .section-row.dragging { opacity: .5; border-style: dashed; }
+  .section-row.drag-over { border-color: var(--green); }
+  .section-drag-handle { color: var(--text-muted); font-size: 16px; }
+  .section-row-name { font-size: 13px; font-weight: 600; flex: 1; }
+  .section-row-count { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="logo">
+      <div class="logo-badge">🚢</div>
+      <div>
+        <div class="logo-text">Dock Audit</div>
+        <div class="logo-sub">QUESTION EDITOR — LIVE</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn btn-outline btn-sm" onclick="openSectionReorder()">↕ Reorder Sections</button>
+      <button class="btn btn-sm btn-yellow" onclick="openAddNote()">+ Add Note</button>
+      <button class="btn btn-primary btn-sm" onclick="openAddQuestion()">+ Add Question</button>
+    </div>
+  </header>
+
+  <!-- Server connection bar -->
+  <div class="server-bar">
+    <label>SERVER</label>
+    <input type="text" id="server-url" value="http://localhost:3001" onchange="reconnect()" onkeydown="if(event.key==='Enter')reconnect()" />
+    <div class="status-dot pending" id="status-dot"></div>
+    <div class="status-text" id="status-text">Connecting…</div>
+    <button class="btn btn-ghost btn-sm" onclick="reconnect()" style="margin-left:4px">↺ Retry</button>
+  </div>
+
+  <div class="tab-bar" id="tab-bar"></div>
+
+  <main>
+    <div id="question-area"></div>
+  </main>
+</div>
+
+<!-- Loading overlay -->
+<div class="loading-overlay" id="loading-overlay">Loading from server…</div>
+
+<!-- Question Modal -->
+<div class="overlay" id="q-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="q-modal-title">Add Question</div>
+      <button class="icon-btn" onclick="closeModal('q-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Question Text</label>
+        <input type="text" id="f-q-text" placeholder="e.g. Is the truck interior clean and free of debris?" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Answer Type</label>
+          <select id="f-q-answertype" onchange="onAnswerTypeChange()">
+            <option value="yes_no">Yes / No</option>
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="photo">Photo</option>
+            <option value="select">Select (dropdown)</option>
+            <option value="temperature">Temperature (°F)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Required?</label>
+          <select id="f-q-required">
+            <option value="1">Yes — required</option>
+            <option value="0">No — optional</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Section / Group</label>
+        <input type="text" id="f-q-section" placeholder="e.g. Truck Inspection, Documentation" />
+        <div class="field-hint">Groups questions visually on the audit form</div>
+      </div>
+      <div class="field" id="options-field" style="display:none">
+        <label>Dropdown Options</label>
+        <div class="options-list" id="options-list"></div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:6px;align-self:flex-start" onclick="addOptionRow('')">+ Add option</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('q-modal')">Cancel</button>
+      <button class="btn btn-primary" id="q-modal-save" onclick="saveQuestion()">Save Question</button>
+    </div>
+  </div>
+</div>
+
+<!-- Note Modal -->
+<div class="overlay" id="note-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="note-modal-title">Add Instruction / Note</div>
+      <button class="icon-btn" onclick="closeModal('note-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Instruction Text</label>
+        <textarea id="f-note-text" placeholder="e.g. Before opening the trailer, verify the seal number matches the BOL."></textarea>
+        <div class="field-hint">Displayed as a callout on the audit form — no answer required.</div>
+      </div>
+      <div class="field">
+        <label>Section / Group</label>
+        <input type="text" id="f-note-section" placeholder="e.g. Truck Inspection" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('note-modal')">Cancel</button>
+      <button class="btn btn-yellow" id="note-modal-save" onclick="saveNote()">Save Note</button>
+    </div>
+  </div>
+</div>
+
+<!-- Audit Type Modal -->
+<div class="overlay" id="type-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="type-modal-title">New Audit Type</div>
+      <button class="icon-btn" onclick="closeModal('type-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="f-type-name" placeholder="e.g. Case Pack, Sanitation, Cold Chain" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Icon (emoji)</label>
+          <input type="text" id="f-type-icon" placeholder="📦" maxlength="2" style="font-size:20px;text-align:center" />
+        </div>
+        <div class="field">
+          <label>Tab Color</label>
+          <div class="color-row" id="color-row"></div>
+        </div>
+      </div>
+      <div class="danger-note" id="type-delete-warning" style="display:none">
+        ⚠ Deleting this audit type will permanently remove all its questions.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" id="type-delete-btn" onclick="deleteAuditType()" style="display:none;color:var(--red);margin-right:auto">Delete Type</button>
+      <button class="btn btn-ghost" onclick="closeModal('type-modal')">Cancel</button>
+      <button class="btn btn-primary" id="type-modal-save" onclick="saveAuditType()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Section Reorder Modal -->
+<div class="overlay" id="section-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">↕ Reorder Sections</div>
+      <button class="icon-btn" onclick="closeModal('section-modal')">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px 24px">
+      <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px;font-family:var(--mono)">
+        Drag sections to set the order they appear on the audit form.
+      </div>
+      <div id="section-list" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('section-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSectionOrder()">Save Order</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+const TAB_COLORS = ['#00d4aa','#ff6b35','#f5c842','#64b4ff','#c896ff','#ff4757','#00c2ff','#a8e063','#ff85a1','#ffb347'];
+const TYPE_LABELS = { yes_no:'Yes/No', text:'Text', number:'Number', photo:'Photo', select:'Select', temperature:'Temp °F', note:'Note' };
+const TYPE_CLASS  = { yes_no:'yn', text:'text', number:'number', photo:'photo', select:'select', temperature:'temp', note:'note' };
+
+let auditTypes = [];
+let questions  = {};   // { [typeId]: Question[] }
+let currentTypeId = null;
+let editingQId = null;
+let editingTypeId = null;
+let selectedColor = TAB_COLORS[0];
+let dragSrcId = null;
+let serverBase = 'http://localhost:3001';
+
+// ── API helpers ───────────────────────────────────────────────────────────────
+
+async function api(method, path, body) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(serverBase + path, opts);
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.error || r.statusText); }
+  return r.json().catch(() => null);
+}
+
+// ── Boot & connection ────────────────────────────────────────────────────────
+
+async function reconnect() {
+  serverBase = document.getElementById('server-url').value.replace(/\/$/, '');
+  setStatus('pending', 'Connecting…');
+  document.getElementById('loading-overlay').classList.remove('hidden');
+  try {
+    await loadAll();
+    setStatus('ok', `Connected · ${auditTypes.length} audit types`);
+  } catch(e) {
+    setStatus('err', 'Cannot reach server — is it running?');
+    document.getElementById('question-area').innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><div class="empty-title">Not connected</div><div>Check the server URL above and make sure the app is running.</div></div>`;
+    document.getElementById('tab-bar').innerHTML = '';
+  } finally {
+    document.getElementById('loading-overlay').classList.add('hidden');
+  }
+}
+
+async function loadAll() {
+  const types = await api('GET', '/api/audit-types');
+  auditTypes = types;
+  questions = {};
+  await Promise.all(types.map(async t => {
+    const qs = await api('GET', `/api/audit-types/${t.id}/questions`);
+    questions[t.id] = qs;
+  }));
+  if (!currentTypeId || !auditTypes.find(t => t.id === currentTypeId)) {
+    currentTypeId = auditTypes[0]?.id ?? null;
+  }
+  render();
+}
+
+function setStatus(state, msg) {
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + state;
+  document.getElementById('status-text').textContent = msg;
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderTabs() {
+  let html = auditTypes.map(t => {
+    const count = (questions[t.id] || []).length;
+    const active = t.id === currentTypeId ? 'active' : '';
+    return `<div class="tab ${active}" style="--tab-color:${t.color}" onclick="switchTab('${t.id}')">
+      ${t.icon} ${esc(t.name)}
+      <span class="tab-count">${count}</span>
+      <button class="tab-edit-btn" title="Edit" onclick="event.stopPropagation();openEditType('${t.id}')">✎</button>
+    </div>`;
+  }).join('');
+  html += `<button class="tab-add" onclick="openAddType()">＋ New Audit Type</button>`;
+  document.getElementById('tab-bar').innerHTML = html;
+}
+
+function renderQuestions() {
+  const area = document.getElementById('question-area');
+  const qs = questions[currentTypeId] || [];
+  if (!qs.length) {
+    area.innerHTML = `<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No questions yet</div><div>Add questions or notes using the buttons in the top right.</div></div>`;
+    return;
+  }
+
+  const sectionMap = {};
+  const sectionMinOrder = {};
+  qs.forEach(q => {
+    if (!sectionMap[q.section]) sectionMap[q.section] = [];
+    sectionMap[q.section].push(q);
+    if (sectionMinOrder[q.section] === undefined || q.sort_order < sectionMinOrder[q.section]) {
+      sectionMinOrder[q.section] = q.sort_order;
+    }
+  });
+  const sortedSections = Object.keys(sectionMap).sort((a, b) => (sectionMinOrder[a] ?? 0) - (sectionMinOrder[b] ?? 0));
+
+  let html = '';
+  sortedSections.forEach(section => {
+    const sqs = sectionMap[section];
+    const qc = sqs.filter(q => q.type !== 'note').length;
+    const nc = sqs.length - qc;
+    let meta = `${qc} question${qc !== 1 ? 's' : ''}`;
+    if (nc) meta += ` · ${nc} note${nc !== 1 ? 's' : ''}`;
+    html += `<div class="section-header"><div class="section-label">${esc(section)}</div><div style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${meta}</div></div><div class="question-list">`;
+    sqs.forEach(q => {
+      const ia = q.active ? '' : 'inactive';
+      const da = `draggable="true" ondragstart="onDragStart(event,'${q.id}')" ondragover="onDragOver(event,'${q.id}')" ondrop="onDrop(event,'${q.id}')" ondragleave="onDragLeave(event,'${q.id}')"`;
+      if (q.type === 'note') {
+        html += `<div class="note-card ${ia}" id="qc-${q.id}" ${da}>
+          <div class="q-drag-handle">⠿</div>
+          <div class="q-body">
+            <div class="note-icon">📋</div>
+            <div class="q-info">
+              <div class="note-text">${esc(q.question)}</div>
+              <div class="q-meta" style="margin-top:6px"><span class="type-badge note">Instruction</span><span class="req-dot">${q.active?'● Visible':'○ Hidden'}</span></div>
+            </div>
+            <div class="q-actions">
+              <button class="toggle ${q.active?'on':''}" onclick="toggleActive('${q.id}',${q.active})"></button>
+              <button class="icon-btn" onclick="openEditNote('${q.id}')">✎</button>
+              <button class="icon-btn delete" onclick="deleteQuestion('${q.id}')">🗑</button>
+            </div>
+          </div>
+        </div>`;
+      } else {
+        const optStr = q.options ? ` · ${q.options.length} opts` : '';
+        html += `<div class="q-card ${ia}" id="qc-${q.id}" ${da}>
+          <div class="q-drag-handle">⠿</div>
+          <div class="q-body">
+            <div class="q-info">
+              <div class="q-text">${esc(q.question)}</div>
+              <div class="q-meta"><span class="type-badge ${TYPE_CLASS[q.type]||''}">${TYPE_LABELS[q.type]||q.type}${optStr}</span><span class="req-dot ${q.required?'required':''}">${q.required?'● Required':'○ Optional'}</span></div>
+            </div>
+            <div class="q-actions">
+              <button class="toggle ${q.active?'on':''}" onclick="toggleActive('${q.id}',${q.active})"></button>
+              <button class="icon-btn" onclick="openEditQuestion('${q.id}')">✎</button>
+              <button class="icon-btn delete" onclick="deleteQuestion('${q.id}')">🗑</button>
+            </div>
+          </div>
+        </div>`;
+      }
+    });
+    html += `</div>`;
+  });
+  area.innerHTML = html;
+}
+
+function render() { renderTabs(); renderQuestions(); }
+function switchTab(id) { currentTypeId = id; render(); }
+
+// ── Drag & Drop ───────────────────────────────────────────────────────────────
+
+function onDragStart(e, id) {
+  dragSrcId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => document.getElementById('qc-' + id)?.classList.add('dragging'), 0);
+}
+function onDragOver(e, id) {
+  e.preventDefault();
+  if (id !== dragSrcId) {
+    document.querySelectorAll('.q-card,.note-card').forEach(c => c.classList.remove('drag-over'));
+    document.getElementById('qc-' + id)?.classList.add('drag-over');
+  }
+}
+function onDragLeave(e, id) { document.getElementById('qc-' + id)?.classList.remove('drag-over'); }
+
+async function onDrop(e, targetId) {
+  e.preventDefault();
+  document.querySelectorAll('.q-card,.note-card').forEach(c => c.classList.remove('dragging', 'drag-over'));
+  if (dragSrcId === targetId) return;
+
+  const qs = questions[currentTypeId] || [];
+  const si = qs.findIndex(q => q.id === dragSrcId);
+  const ti = qs.findIndex(q => q.id === targetId);
+  if (si < 0 || ti < 0) return;
+
+  const [item] = qs.splice(si, 1);
+  qs.splice(ti, 0, item);
+
+  // Update sort_order values and persist
+  const updates = qs.map((q, i) => ({ id: q.id, sort_order: i }));
+  render();
+  try {
+    await Promise.all(updates.map(u =>
+      api('PATCH', `/api/audit-types/${currentTypeId}/questions/${u.id}`, { sort_order: u.sort_order })
+    ));
+    toast('✓ Order saved', 'success');
+  } catch(e) {
+    toast('Failed to save order: ' + e.message, 'error');
+  }
+}
+
+// ── Audit Type CRUD ───────────────────────────────────────────────────────────
+
+function buildColorPicker(sel) {
+  selectedColor = sel;
+  document.getElementById('color-row').innerHTML = TAB_COLORS.map(c =>
+    `<div class="color-swatch ${c===sel?'selected':''}" style="background:${c}" title="${c}" onclick="selectColor('${c}')"></div>`
+  ).join('');
+}
+function selectColor(c) { selectedColor = c; document.querySelectorAll('.color-swatch').forEach(s => s.classList.toggle('selected', s.title === c)); }
+
+function openAddType() {
+  editingTypeId = null;
+  document.getElementById('type-modal-title').textContent = 'New Audit Type';
+  document.getElementById('type-modal-save').textContent = 'Create';
+  document.getElementById('f-type-name').value = '';
+  document.getElementById('f-type-icon').value = '📋';
+  document.getElementById('type-delete-btn').style.display = 'none';
+  document.getElementById('type-delete-warning').style.display = 'none';
+  buildColorPicker(TAB_COLORS[auditTypes.length % TAB_COLORS.length]);
+  openModal('type-modal');
+  setTimeout(() => document.getElementById('f-type-name').focus(), 100);
+}
+function openEditType(id) {
+  editingTypeId = id;
+  const t = auditTypes.find(x => x.id === id); if (!t) return;
+  document.getElementById('type-modal-title').textContent = 'Edit Audit Type';
+  document.getElementById('type-modal-save').textContent = 'Save Changes';
+  document.getElementById('f-type-name').value = t.name;
+  document.getElementById('f-type-icon').value = t.icon;
+  document.getElementById('type-delete-btn').style.display = 'inline-flex';
+  const qc = (questions[id] || []).length;
+  document.getElementById('type-delete-warning').style.display = qc ? 'block' : 'none';
+  buildColorPicker(t.color);
+  openModal('type-modal');
+  setTimeout(() => document.getElementById('f-type-name').focus(), 100);
+}
+
+async function saveAuditType() {
+  const name = document.getElementById('f-type-name').value.trim();
+  if (!name) { toast('Name is required', 'error'); return; }
+  const icon = document.getElementById('f-type-icon').value.trim() || '📋';
+  const btn = document.getElementById('type-modal-save');
+  btn.disabled = true;
+  try {
+    if (editingTypeId !== null) {
+      await api('PATCH', `/api/audit-types/${editingTypeId}`, { name, icon, color: selectedColor });
+      const t = auditTypes.find(x => x.id === editingTypeId);
+      if (t) Object.assign(t, { name, icon, color: selectedColor });
+      toast('✓ Updated', 'success');
+    } else {
+      const { id } = await api('POST', '/api/audit-types', { name, icon, color: selectedColor });
+      auditTypes.push({ id, name, icon, color: selectedColor, question_count: 0 });
+      questions[id] = [];
+      currentTypeId = id;
+      toast(`✓ "${name}" created`, 'success');
+    }
+    closeModal('type-modal');
+    render();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteAuditType() {
+  if (!editingTypeId) return;
+  const t = auditTypes.find(x => x.id === editingTypeId); if (!t) return;
+  const qc = (questions[editingTypeId] || []).length;
+  const msg = qc ? `Delete "${t.name}" and all ${qc} questions? Cannot be undone.` : `Delete "${t.name}"?`;
+  if (!confirm(msg)) return;
+  try {
+    await api('DELETE', `/api/audit-types/${editingTypeId}`);
+    auditTypes = auditTypes.filter(x => x.id !== editingTypeId);
+    delete questions[editingTypeId];
+    currentTypeId = auditTypes[0]?.id ?? null;
+    closeModal('type-modal');
+    render();
+    toast(`"${t.name}" deleted`, 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── Question CRUD ─────────────────────────────────────────────────────────────
+
+function openAddQuestion() {
+  editingQId = null;
+  document.getElementById('q-modal-title').textContent = 'Add Question';
+  document.getElementById('q-modal-save').textContent = 'Save Question';
+  document.getElementById('f-q-text').value = '';
+  document.getElementById('f-q-answertype').value = 'yes_no';
+  document.getElementById('f-q-section').value = '';
+  document.getElementById('f-q-required').value = '1';
+  document.getElementById('options-list').innerHTML = '';
+  document.getElementById('options-field').style.display = 'none';
+  openModal('q-modal');
+  setTimeout(() => document.getElementById('f-q-text').focus(), 100);
+}
+function openEditQuestion(id) {
+  editingQId = id;
+  const qs = questions[currentTypeId] || [];
+  const q = qs.find(x => x.id === id); if (!q) return;
+  document.getElementById('q-modal-title').textContent = 'Edit Question';
+  document.getElementById('q-modal-save').textContent = 'Save Changes';
+  document.getElementById('f-q-text').value = q.question;
+  document.getElementById('f-q-answertype').value = q.type;
+  document.getElementById('f-q-section').value = q.section;
+  document.getElementById('f-q-required').value = String(q.required);
+  document.getElementById('options-list').innerHTML = '';
+  if (q.type === 'select') {
+    document.getElementById('options-field').style.display = 'flex';
+    (q.options || []).forEach(addOptionRow);
+  } else {
+    document.getElementById('options-field').style.display = 'none';
+  }
+  openModal('q-modal');
+  setTimeout(() => document.getElementById('f-q-text').focus(), 100);
+}
+
+async function saveQuestion() {
+  const question = document.getElementById('f-q-text').value.trim();
+  if (!question) { toast('Question text required', 'error'); return; }
+  const section = document.getElementById('f-q-section').value.trim();
+  if (!section) { toast('Section is required', 'error'); return; }
+  const type = document.getElementById('f-q-answertype').value;
+  const required = parseInt(document.getElementById('f-q-required').value);
+  let options = null;
+  if (type === 'select') {
+    options = Array.from(document.querySelectorAll('.opt-input')).map(i => i.value.trim()).filter(Boolean);
+    if (!options.length) { toast('Add at least one option', 'error'); return; }
+  }
+
+  const btn = document.getElementById('q-modal-save');
+  btn.disabled = true;
+  try {
+    if (editingQId !== null) {
+      await api('PATCH', `/api/audit-types/${currentTypeId}/questions/${editingQId}`, { question, type, section, required, options });
+      const qs = questions[currentTypeId] || [];
+      const q = qs.find(x => x.id === editingQId);
+      if (q) Object.assign(q, { question, type, section, required, options });
+      toast('✓ Updated', 'success');
+    } else {
+      const typeList = questions[currentTypeId] || [];
+      const sort_order = typeList.length;
+      const { id } = await api('POST', `/api/audit-types/${currentTypeId}/questions`, { question, type, section, required, options, sort_order });
+      typeList.push({ id, question, type, section, required, options, active: 1, sort_order });
+      questions[currentTypeId] = typeList;
+      toast('✓ Question added', 'success');
+    }
+    closeModal('q-modal');
+    render();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function onAnswerTypeChange() {
+  const type = document.getElementById('f-q-answertype').value;
+  document.getElementById('options-field').style.display = type === 'select' ? 'flex' : 'none';
+  if (type === 'select' && !document.querySelectorAll('.opt-input').length) addOptionRow('');
+}
+function addOptionRow(val) {
+  const row = document.createElement('div'); row.className = 'option-row';
+  row.innerHTML = `<input type="text" class="opt-input" value="${esc(val)}" placeholder="Option text"/><button class="icon-btn delete btn-sm" onclick="this.parentElement.remove()">✕</button>`;
+  document.getElementById('options-list').appendChild(row);
+}
+
+// ── Note CRUD ─────────────────────────────────────────────────────────────────
+
+function openAddNote() {
+  editingQId = null;
+  document.getElementById('note-modal-title').textContent = 'Add Instruction / Note';
+  document.getElementById('note-modal-save').textContent = 'Save Note';
+  document.getElementById('f-note-text').value = '';
+  document.getElementById('f-note-section').value = '';
+  openModal('note-modal');
+  setTimeout(() => document.getElementById('f-note-text').focus(), 100);
+}
+function openEditNote(id) {
+  editingQId = id;
+  const qs = questions[currentTypeId] || [];
+  const q = qs.find(x => x.id === id); if (!q) return;
+  document.getElementById('note-modal-title').textContent = 'Edit Note';
+  document.getElementById('note-modal-save').textContent = 'Save Changes';
+  document.getElementById('f-note-text').value = q.question;
+  document.getElementById('f-note-section').value = q.section;
+  openModal('note-modal');
+  setTimeout(() => document.getElementById('f-note-text').focus(), 100);
+}
+
+async function saveNote() {
+  const text = document.getElementById('f-note-text').value.trim();
+  if (!text) { toast('Note text required', 'error'); return; }
+  const section = document.getElementById('f-note-section').value.trim();
+  if (!section) { toast('Section is required', 'error'); return; }
+
+  const btn = document.getElementById('note-modal-save');
+  btn.disabled = true;
+  try {
+    if (editingQId !== null) {
+      await api('PATCH', `/api/audit-types/${currentTypeId}/questions/${editingQId}`, { question: text, section });
+      const qs = questions[currentTypeId] || [];
+      const q = qs.find(x => x.id === editingQId);
+      if (q) Object.assign(q, { question: text, section });
+      toast('✓ Updated', 'success');
+    } else {
+      const typeList = questions[currentTypeId] || [];
+      const { id } = await api('POST', `/api/audit-types/${currentTypeId}/questions`, { question: text, type: 'note', section, required: 0, sort_order: typeList.length });
+      typeList.push({ id, question: text, type: 'note', section, required: 0, active: 1, sort_order: typeList.length });
+      questions[currentTypeId] = typeList;
+      toast('✓ Note added', 'success');
+    }
+    closeModal('note-modal');
+    render();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Toggle / Delete ───────────────────────────────────────────────────────────
+
+async function toggleActive(id, currentActive) {
+  const newVal = currentActive ? 0 : 1;
+  try {
+    await api('PATCH', `/api/audit-types/${currentTypeId}/questions/${id}`, { active: newVal });
+    const qs = questions[currentTypeId] || [];
+    const q = qs.find(x => x.id === id);
+    if (q) q.active = newVal;
+    render();
+    toast(newVal ? '✓ Activated' : 'Hidden from auditors', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function deleteQuestion(id) {
+  const qs = questions[currentTypeId] || [];
+  const q = qs.find(x => x.id === id); if (!q) return;
+  if (!confirm(`Delete "${q.type === 'note' ? 'this note' : q.question}"?`)) return;
+  try {
+    await api('DELETE', `/api/audit-types/${currentTypeId}/questions/${id}`);
+    questions[currentTypeId] = qs.filter(x => x.id !== id);
+    render();
+    toast('Deleted', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); editingQId = null; editingTypeId = null; }
+document.querySelectorAll('.overlay').forEach(el => el.addEventListener('click', e => { if (e.target === el) closeModal(el.id); }));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.overlay.open').forEach(el => closeModal(el.id)); });
+
+// ── Toast & Util ──────────────────────────────────────────────────────────────
+
+function toast(msg, type = 'success') {
+  const el = document.createElement('div'); el.className = `toast ${type}`; el.textContent = msg;
+  document.getElementById('toast-wrap').appendChild(el); setTimeout(() => el.remove(), 2800);
+}
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Section Reorder ───────────────────────────────────────────────────────────
+
+let sectionDragSrc = null;
+let pendingSectionOrder = []; // array of section names in new order
+
+function getSectionOrder() {
+  const qs = questions[currentTypeId] || [];
+  const seen = new Set();
+  const ordered = [];
+  // Sort by min sort_order within section to get current section order
+  const minOrder = {};
+  qs.forEach(q => {
+    if (minOrder[q.section] === undefined || q.sort_order < minOrder[q.section]) {
+      minOrder[q.section] = q.sort_order;
+    }
+  });
+  qs.slice().sort((a, b) => (minOrder[a.section] ?? 0) - (minOrder[b.section] ?? 0))
+    .forEach(q => { if (!seen.has(q.section)) { seen.add(q.section); ordered.push(q.section); } });
+  return ordered;
+}
+
+function openSectionReorder() {
+  const sections = getSectionOrder();
+  pendingSectionOrder = [...sections];
+  renderSectionList();
+  openModal('section-modal');
+}
+
+function renderSectionList() {
+  const qs = questions[currentTypeId] || [];
+  const countMap = {};
+  qs.forEach(q => { countMap[q.section] = (countMap[q.section] || 0) + 1; });
+
+  document.getElementById('section-list').innerHTML = pendingSectionOrder.map((sec, i) =>
+    `<div class="section-row" id="sec-row-${i}"
+        draggable="true"
+        ondragstart="onSecDragStart(event,${i})"
+        ondragover="onSecDragOver(event,${i})"
+        ondrop="onSecDrop(event,${i})"
+        ondragleave="onSecDragLeave(event,${i})">
+      <div class="section-drag-handle">⠿</div>
+      <div class="section-row-name">${esc(sec)}</div>
+      <div class="section-row-count">${countMap[sec] || 0} items</div>
+    </div>`
+  ).join('');
+}
+
+function onSecDragStart(e, i) {
+  sectionDragSrc = i;
+  setTimeout(() => document.getElementById('sec-row-' + i)?.classList.add('dragging'), 0);
+}
+function onSecDragOver(e, i) {
+  e.preventDefault();
+  if (i !== sectionDragSrc) {
+    document.querySelectorAll('.section-row').forEach(r => r.classList.remove('drag-over'));
+    document.getElementById('sec-row-' + i)?.classList.add('drag-over');
+  }
+}
+function onSecDragLeave(e, i) { document.getElementById('sec-row-' + i)?.classList.remove('drag-over'); }
+function onSecDrop(e, i) {
+  e.preventDefault();
+  document.querySelectorAll('.section-row').forEach(r => r.classList.remove('dragging', 'drag-over'));
+  if (sectionDragSrc === i) return;
+  const [item] = pendingSectionOrder.splice(sectionDragSrc, 1);
+  pendingSectionOrder.splice(i, 0, item);
+  renderSectionList();
+}
+
+async function saveSectionOrder() {
+  const qs = questions[currentTypeId] || [];
+  const BLOCK = 100; // each section gets a block of 100 sort_order slots
+  const updates = [];
+
+  pendingSectionOrder.forEach((sec, secIdx) => {
+    const secQs = qs.filter(q => q.section === sec);
+    // Sort within section by existing sort_order to preserve intra-section order
+    secQs.sort((a, b) => a.sort_order - b.sort_order);
+    secQs.forEach((q, qIdx) => {
+      const newOrder = secIdx * BLOCK + qIdx;
+      if (q.sort_order !== newOrder) updates.push({ id: q.id, sort_order: newOrder });
+      q.sort_order = newOrder;
+    });
+  });
+
+  if (!updates.length) { closeModal('section-modal'); toast('No changes', 'success'); return; }
+
+  const btn = document.querySelector('#section-modal .btn-primary');
+  btn.disabled = true;
+  try {
+    await Promise.all(updates.map(u =>
+      api('PATCH', `/api/audit-types/${currentTypeId}/questions/${u.id}`, { sort_order: u.sort_order })
+    ));
+    closeModal('section-modal');
+    render();
+    toast('✓ Section order saved', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+reconnect();
+</script>
+</body>
+</html>
