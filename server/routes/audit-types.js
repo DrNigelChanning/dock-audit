@@ -72,7 +72,7 @@ router.get('/:id/questions', async (req, res) => {
     const questions = db.prepare(`
       SELECT * FROM audit_questions
       WHERE audit_type_id = ? AND active = 1
-      ORDER BY section, sort_order
+      ORDER BY sort_order
     `).all(req.params.id);
     // Parse options JSON
     const parsed = questions.map(q => ({
