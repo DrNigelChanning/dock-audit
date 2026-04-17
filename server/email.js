@@ -4,6 +4,10 @@ const dayjs = require('dayjs');
 
 async function sendViaSendGrid(to, cc, subject, html) {
   const apiKey = config.EMAIL.smtp.auth.pass; // reuses SMTP_PASS var
+
+  // SendGrid rejects duplicate addresses across to/cc — only add cc if different from to
+  const ccList = cc && cc.toLowerCase() !== to.toLowerCase() ? [{ email: cc }] : undefined;
+
   const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
@@ -11,7 +15,7 @@ async function sendViaSendGrid(to, cc, subject, html) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }], cc: cc ? [{ email: cc }] : undefined }],
+      personalizations: [{ to: [{ email: to }], cc: ccList }],
       from: { email: config.EMAIL.from, name: 'THS Dock Audit' },
       subject,
       content: [{ type: 'text/html', value: html }],

@@ -126,7 +126,7 @@ router.patch('/:id', async (req, res) => {
     if (audit.status === 'submitted') return res.status(400).json({ error: 'Submitted audits cannot be edited' });
 
     const allowed = [
-      'supplier','customer','carrier','trailer_number','seal_number','seal_intact',
+      'po_number','so_number','supplier','customer','carrier','trailer_number','seal_number','seal_intact',
       'is_refrigerated','truck_temp_f','temp_in_range','temp_gun_photo','temp_control_photo',
       'truck_condition','truck_condition_notes','truck_condition_photo',
       'packing_list_received','coa_received','invoice_received','docs_score','quality_score',

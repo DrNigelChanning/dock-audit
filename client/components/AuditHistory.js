@@ -189,7 +189,8 @@ function AuditDetail({ audit, loading, onBack }) {
 
   if (!audit) return null;
 
-  const isInbound = audit.type === 'inbound';
+  const typeName  = (audit.audit_type_name || audit.type || '').toLowerCase();
+  const isInbound = typeName.includes('inbound');
   const lineItems = audit.lineItems || [];
   const discrepancies = audit.discrepancies || [];
 
