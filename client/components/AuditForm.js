@@ -578,7 +578,24 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
   );
 
   const renderReview = () => {
-    const hasFlags = discrepancies.length > 0 ||
+    // Derive item count and variance flag from question answers (Line Items step removed)
+    const itemNameQ    = questions.find(q => ['item', 'ingredient', 'sku'].some(kw => q.question.toLowerCase().includes(kw)) && q.section === 'Load Verification');
+    const expectedQtyQ = questions.find(q => q.question.toLowerCase().includes('expected') && q.section === 'Load Verification');
+    const actualQtyQ   = questions.find(q => q.question.toLowerCase().includes('actual') && q.section === 'Load Verification');
+    const conditionQ   = questions.find(q => q.question.toLowerCase().includes('condition') && q.section === 'Load Verification');
+
+    const itemName  = itemNameQ ? answers[itemNameQ.id] : null;
+    const expectedQ = expectedQtyQ ? parseFloat(answers[expectedQtyQ.id]) : NaN;
+    const actualQ   = actualQtyQ   ? parseFloat(answers[actualQtyQ.id])   : NaN;
+    const condition = conditionQ   ? answers[conditionQ.id] : null;
+
+    const effectiveItemCount = (itemName || (!isNaN(expectedQ) && expectedQ > 0)) ? 1 : lineItems.length;
+    const hasQtyVariance = !isNaN(expectedQ) && !isNaN(actualQ) && expectedQ > 0
+      && Math.abs((actualQ - expectedQ) / expectedQ) > 0.05;
+    const hasDamage = condition && (condition.toLowerCase().includes('damage') || condition.toLowerCase().includes('rejected'));
+    const effectiveDiscrepancyCount = discrepancies.length + (hasQtyVariance || hasDamage ? 1 : 0);
+
+    const hasFlags = effectiveDiscrepancyCount > 0 ||
       lineItems.some(li => li.condition === 'Major damage' || li.condition === 'Rejected');
 
     return (
@@ -596,8 +613,8 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
                 ['Audit type', `${auditType.icon} ${auditType.name}`],
                 ['Auditor', auditorName],
                 ['Location', location],
-                ['Items', lineItems.length],
-                ['Discrepancies', discrepancies.length],
+                ['Items', effectiveItemCount],
+                ['Discrepancies', effectiveDiscrepancyCount],
               ].map(([label, value]) => (
                 <tr key={label} style={{ borderBottom: '1px solid var(--gray-100)' }}>
                   <td style={{ padding: '8px 0', color: 'var(--gray-500)', fontWeight: 600, width: '45%' }}>{label}</td>
