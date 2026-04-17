@@ -293,6 +293,10 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
     // Also save any structured fields we can extract
     const patch = { question_answers: sectionAnswers };
 
+    // Derive load type from answers (needed for correct temp spec)
+    const loadTypeQ = questions.find(q => q.question.toLowerCase().includes('load type'));
+    const loadType  = loadTypeQ ? answers[loadTypeQ.id] : null;
+
     // Map well-known question text → structured columns for backward compat + PDF
     sectionQuestions.forEach(q => {
       const val = answers[q.id];
@@ -308,7 +312,10 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
       if (ql.includes('seal intact'))           patch.seal_intact = val;
       if (ql.includes('temperature (°f)') || ql.includes('interior temperature')) {
         patch.truck_temp_f = val;
-        if (val !== '' && val !== null) patch.temp_in_range = tempInRange(val, 'refrigerated_inbound') ? 1 : 0;
+        if (val !== '' && val !== null) {
+          const tempSpec = loadType === 'Frozen' ? 'frozen_inbound' : 'refrigerated_inbound';
+          patch.temp_in_range = tempInRange(val, tempSpec) ? 1 : 0;
+        }
       }
       if (ql.includes('temperature gun photo') && q.type === 'photo') patch.temp_gun_photo = val;
       if (ql.includes('temperature control') && q.type === 'photo')   patch.temp_control_photo = val;

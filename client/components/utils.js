@@ -69,10 +69,10 @@ function tempClass(temp, spec) {
 
 function tempInRange(temp, specKey) {
   const SPECS = {
-    frozen_inbound: { min: -99, max: 0 },
-    refrigerated_inbound: { min: 34, max: 40 },
-    frozen_outbound: { min: -99, max: 10 },
-    refrigerated_outbound: { min: 34, max: 42 },
+    frozen_inbound: { min: -99, max: 32 },
+    refrigerated_inbound: { min: 33, max: 40 },
+    frozen_outbound: { min: -99, max: 32 },
+    refrigerated_outbound: { min: 33, max: 42 },
   };
   const spec = SPECS[specKey];
   if (!spec || temp === null || temp === '') return null;

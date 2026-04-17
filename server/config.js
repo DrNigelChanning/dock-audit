@@ -10,10 +10,10 @@ module.exports = {
 
   // Temperature specs (°F)
   TEMP_SPECS: {
-    frozen_inbound:    { min: -99, max: 0,  label: 'Frozen Inbound' },
-    refrigerated_inbound: { min: 34, max: 40, label: 'Refrigerated Inbound' },
-    frozen_outbound:   { min: -99, max: 10, label: 'Frozen Outbound' },
-    refrigerated_outbound: { min: 34, max: 42, label: 'Refrigerated Outbound' },
+    frozen_inbound:    { min: -99, max: 32, label: 'Frozen Inbound' },
+    refrigerated_inbound: { min: 33, max: 40, label: 'Refrigerated Inbound' },
+    frozen_outbound:   { min: -99, max: 32, label: 'Frozen Outbound' },
+    refrigerated_outbound: { min: 33, max: 42, label: 'Refrigerated Outbound' },
   },
 
   // Scorecard thresholds (mirrors Open PO sheet formulas)
