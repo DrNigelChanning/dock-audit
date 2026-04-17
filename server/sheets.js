@@ -256,8 +256,8 @@ async function getOpenPOs() {
 
 const AUDIT_LOG_HEADERS = [
   'Submitted At', 'Audit Type', 'Auditor', 'Supplier / Customer',
-  'PO / SO #', 'Carrier', 'Trailer #', 'Temp (°F)', 'Temp OK?',
-  'Quality Score', 'Has Discrepancy', 'Notes',
+  'PO / SO #', 'Carrier', 'Item', 'Qty Expected', 'Qty Received',
+  'Temp (°F)', 'Temp OK?', 'Quality Score', 'Has Discrepancy', 'Notes',
 ];
 
 async function appendAuditRow(audit) {
@@ -276,7 +276,7 @@ async function appendAuditRow(audit) {
     const auth = getAuth();
     const sheets = google.sheets({ version: 'v4', auth });
     const tabName = process.env.AUDIT_LOG_TAB || 'Audit Log';
-    const range = `'${tabName}'!A1:L1`;
+    const range = `'${tabName}'!A1:N1`;
 
     // Check if headers exist — write them if the sheet is empty
     const check = await sheets.spreadsheets.values.get({
@@ -301,7 +301,9 @@ async function appendAuditRow(audit) {
       audit.supplier || audit.customer || '—',
       audit.po_number || audit.so_number || '—',
       audit.carrier || '—',
-      audit.trailer_number || '—',
+      audit.item_name || '—',
+      audit.qty_expected != null ? audit.qty_expected : '—',
+      audit.qty_received != null ? audit.qty_received : '—',
       audit.truck_temp_f != null ? audit.truck_temp_f : '—',
       audit.truck_temp_f != null ? (audit.temp_in_range ? 'Yes' : 'No') : '—',
       qualityLabels[audit.quality_score] || '—',

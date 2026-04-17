@@ -285,6 +285,13 @@ router.post('/:id/submit', async (req, res) => {
     db.prepare(`UPDATE audits SET status='submitted', submitted_at=?, pdf_filename=?, has_discrepancy=?, quality_score=?, updated_at=? WHERE id=?`)
       .run(now, pdfFilename, hasDisc, qualScore, now, audit.id);
 
+    // Extract item/qty fields from question_answers for email + sheets
+    const qa = (() => { try { return audit.question_answers ? JSON.parse(audit.question_answers) : {}; } catch { return {}; } })();
+    const getQA = (keywords) => {
+      const q = allQuestions.find(q => keywords.some(kw => q.question.toLowerCase().includes(kw)));
+      return q ? (qa[q.id] ?? null) : null;
+    };
+
     // Build the fully submitted audit object for downstream integrations
     const submittedAudit = {
       ...audit,
@@ -293,6 +300,9 @@ router.post('/:id/submit', async (req, res) => {
       pdf_filename: pdfFilename,
       has_discrepancy: hasDisc,
       quality_score: qualScore,
+      item_name:    getQA(['item', 'ingredient', 'sku']),
+      qty_expected: getQA(['expected']),
+      qty_received: getQA(['actual']),
     };
 
     // PDF — fire and forget

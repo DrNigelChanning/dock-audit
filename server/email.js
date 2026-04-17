@@ -84,9 +84,11 @@ function buildHtml(audit, lineItems, discrepancies) {
         <tr><td style="padding:5px 0;color:#718096;">${audit.supplier ? 'Supplier' : 'Customer'}</td><td style="padding:5px 0;font-weight:500;">${entity}</td></tr>
         <tr><td style="padding:5px 0;color:#718096;">Reference</td><td style="padding:5px 0;font-weight:500;">${ref}</td></tr>
         <tr><td style="padding:5px 0;color:#718096;">Carrier</td><td style="padding:5px 0;font-weight:500;">${audit.carrier || '—'}</td></tr>
-        <tr><td style="padding:5px 0;color:#718096;">Trailer #</td><td style="padding:5px 0;font-weight:500;">${audit.trailer_number || '—'}</td></tr>
+        ${audit.item_name ? `<tr><td style="padding:5px 0;color:#718096;">Item</td><td style="padding:5px 0;font-weight:500;">${audit.item_name}</td></tr>` : ''}
+        ${audit.qty_expected != null ? `<tr><td style="padding:5px 0;color:#718096;">Qty Expected</td><td style="padding:5px 0;font-weight:500;">${audit.qty_expected}</td></tr>` : ''}
+        ${audit.qty_received != null ? `<tr><td style="padding:5px 0;color:#718096;">Qty Received</td><td style="padding:5px 0;font-weight:500;">${audit.qty_received}</td></tr>` : ''}
         <tr><td style="padding:5px 0;color:#718096;">Quality Score</td><td style="padding:5px 0;font-weight:500;">${qScore}</td></tr>
-        ${audit.truck_temp_f != null ? `<tr><td style="padding:5px 0;color:#718096;">Truck Temp</td><td style="padding:5px 0;font-weight:500;">${audit.truck_temp_f}°F ${audit.temp_in_range ? '✅' : '⚠️ Out of range'}</td></tr>` : ''}
+        ${audit.truck_temp_f != null ? `<tr><td style="padding:5px 0;color:#718096;">Truck Temp</td><td style="padding:5px 0;font-weight:500;">${audit.truck_temp_f}°F ${audit.temp_in_range ? 'In range' : 'OUT OF RANGE'}</td></tr>` : ''}
         ${audit.notes ? `<tr><td style="padding:5px 0;color:#718096;">Notes</td><td style="padding:5px 0;">${audit.notes}</td></tr>` : ''}
       </table>
       ${discrepancySection}
