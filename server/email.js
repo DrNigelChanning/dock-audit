@@ -1,18 +1,27 @@
-// server/email.js — Sends audit completion emails via SendGrid SMTP
-const nodemailer = require('nodemailer');
+// server/email.js — Sends audit completion emails via SendGrid Web API
 const config = require('./config');
 const dayjs = require('dayjs');
 
-function getTransport() {
-  return nodemailer.createTransport({
-    host: config.EMAIL.smtp.host,
-    port: config.EMAIL.smtp.port,
-    secure: false,
-    auth: {
-      user: config.EMAIL.smtp.auth.user,
-      pass: config.EMAIL.smtp.auth.pass,
+async function sendViaSendGrid(to, cc, subject, html) {
+  const apiKey = config.EMAIL.smtp.auth.pass; // reuses SMTP_PASS var
+  const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }], cc: cc ? [{ email: cc }] : undefined }],
+      from: { email: config.EMAIL.from, name: 'THS Dock Audit' },
+      subject,
+      content: [{ type: 'text/html', value: html }],
+    }),
   });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(`SendGrid ${response.status}: ${body}`);
+  }
 }
 
 function buildSubject(audit) {
@@ -96,22 +105,16 @@ async function sendAuditComplete(audit, lineItems = [], discrepancies = []) {
   }
 
   try {
-    const transport = getTransport();
-
     // Recipient by audit type — inbound goes to Stephen, outbound to Ben
     let to = config.EMAIL.inbound_flags_to;
     if (audit.type === 'outbound') to = config.EMAIL.outbound_flags_to;
 
-    const info = await transport.sendMail({
-      from: `"THS Dock Audit" <${config.EMAIL.from}>`,
-      to,
-      cc: config.EMAIL.cc_always,
-      subject: buildSubject(audit),
-      html: buildHtml(audit, lineItems, discrepancies),
-    });
+    const subject = buildSubject(audit);
+    const html    = buildHtml(audit, lineItems, discrepancies);
+    await sendViaSendGrid(to, config.EMAIL.cc_always, subject, html);
 
-    console.log(`✅ Email sent: ${info.messageId} → ${to}`);
-    return { success: true, messageId: info.messageId };
+    console.log(`✅ Email sent → ${to}`);
+    return { success: true };
   } catch (err) {
     console.error('❌ Email error:', err.message);
     return { error: err.message };

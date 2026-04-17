@@ -25,7 +25,7 @@ module.exports = {
   // Email (configure with real SMTP for production)
   EMAIL: {
     enabled: process.env.EMAIL_ENABLED === 'true' || false,
-    from: 'dock-audit@thehoneststand.com',
+    from: process.env.FROM_EMAIL || 'dock-audit@thehoneststand.com',
     inbound_flags_to: process.env.INBOUND_FLAGS_EMAIL || 'stephen@thehoneststand.com',
     outbound_flags_to: process.env.OUTBOUND_FLAGS_EMAIL || 'ben@thehoneststand.com',
     cc_always: process.env.CC_EMAIL || 'phil@thehoneststand.com',

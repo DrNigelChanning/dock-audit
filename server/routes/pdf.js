@@ -63,7 +63,16 @@ async function generatePDF(audit, filename) {
 
 function buildHTML(audit) {
   const { lineItems = [], discrepancies = [] } = audit;
-  const isInbound = audit.type === 'inbound';
+  const typeName = (audit.audit_type_name || audit.type || '').toLowerCase();
+  const isInbound  = typeName.includes('inbound');
+  const isOutbound = typeName.includes('outbound');
+  const isCasePack = typeName.includes('case');
+  const auditTitle = audit.audit_type_name
+    ? `${audit.audit_type_name} Audit`
+    : isInbound ? 'Inbound Receiving Audit' : isOutbound ? 'Outbound Shipping Audit' : 'Dock Audit';
+  const refLabel = isOutbound ? 'SO NUMBER' : 'PO NUMBER';
+  const refValue = isOutbound ? (audit.so_number || audit.po_number || '—') : (audit.po_number || audit.so_number || '—');
+  const itemsLabel = isOutbound ? 'ITEMS LOADED' : isInbound ? 'ITEMS RECEIVED' : 'ITEMS INSPECTED';
   const dateStr = dayjs(audit.audit_date).format('MMMM D, YYYY');
   const timeStr = dayjs(audit.submitted_at || audit.audit_date).format('h:mm A');
 
@@ -122,12 +131,12 @@ function buildHTML(audit) {
       <tr>
         <td>
           <div style="font-size: 11px; opacity: 0.7; letter-spacing: 1px; text-transform: uppercase;">THE HONEST STAND / BOLDER FOODS</div>
-          <div style="font-size: 24px; font-weight: 700;">${isInbound ? 'Inbound Receiving Audit' : 'Outbound Shipping Audit'}</div>
+          <div style="font-size: 24px; font-weight: 700;">${auditTitle}</div>
           <div style="font-size: 13px; opacity: 0.85; margin-top: 4px;">${dateStr} &nbsp;·&nbsp; ${timeStr}</div>
         </td>
         <td style="text-align: right; vertical-align: middle;">
-          <div style="font-size: 11px; opacity: 0.7;">${isInbound ? 'PO NUMBER' : 'SO NUMBER'}</div>
-          <div style="font-size: 22px; font-weight: 700;">#${audit.po_number || audit.so_number || '—'}</div>
+          <div style="font-size: 11px; opacity: 0.7;">${refLabel}</div>
+          <div style="font-size: 22px; font-weight: 700;">#${refValue}</div>
         </td>
       </tr>
     </table>
@@ -161,7 +170,7 @@ function buildHTML(audit) {
       <div style="font-size:13px"><strong>Truck interior temp:</strong> ${audit.truck_temp_f ?? '—'}°F</div>
     </div>` : ''}
 
-    <h3 style="font-size:12px; font-weight:700; color:#374151; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px;">${isInbound ? 'ITEMS RECEIVED' : 'ITEMS LOADED'}</h3>
+    <h3 style="font-size:12px; font-weight:700; color:#374151; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px;">${itemsLabel}</h3>
     <table class="items-table">
       <thead>
         <tr><th>Item</th><th>Expected</th><th>Actual</th><th>Variance</th><th>Lot Code</th><th>Condition</th></tr>
