@@ -84,13 +84,46 @@ function buildHTML(audit) {
     3: `${dot('#16a34a')}Green — Meets Expectations`
   };
 
-  // --- Photo Section Logic ---
-  // Scan question_answers for any photo-type answers (file paths starting with /uploads/)
+  // --- Parse question_answers once — used for photos and line item fallback ---
   const questionAnswers = (() => {
     try { return audit.question_answers ? JSON.parse(audit.question_answers) : {}; }
     catch (e) { return {}; }
   })();
+  const allQuestions   = audit.allQuestions   || [];
   const photoQuestions = audit.photoQuestions || [];
+
+  // --- Line item fallback: if no audit_line_items rows, build from question_answers ---
+  // This handles audits where the form uses question-based Load Verification (no separate line items step)
+  let effectiveLineItems = lineItems;
+  if (effectiveLineItems.length === 0 && allQuestions.length > 0) {
+    const lvQs = allQuestions.filter(q => q.section === 'Load Verification');
+    if (lvQs.length > 0) {
+      const get = (keywords) => {
+        const q = lvQs.find(q => keywords.some(kw => q.question.toLowerCase().includes(kw)));
+        return q ? (questionAnswers[q.id] ?? null) : null;
+      };
+      const itemName    = get(['item', 'ingredient', 'sku']);
+      const expectedQty = get(['expected']);
+      const actualQty   = get(['actual']);
+      const lotCode     = get(['lot code']);
+      const expDate     = get(['expiration', 'best by']);
+      const condition   = get(['condition']);
+      // Only add a row if we have at least a name or qty
+      if (itemName || expectedQty || actualQty) {
+        const exp = parseFloat(expectedQty);
+        const act = parseFloat(actualQty);
+        const variancePct = (!isNaN(exp) && !isNaN(act) && exp > 0) ? ((act - exp) / exp) : null;
+        effectiveLineItems = [{
+          item_name: itemName || '—',
+          expected_qty: expectedQty ?? '—',
+          actual_qty: actualQty ?? '—',
+          qty_variance_pct: variancePct,
+          lot_code: lotCode || '—',
+          condition: condition || '—',
+        }];
+      }
+    }
+  }
 
   // Build photos from question_answers using photo-type question labels
   const seenPaths = new Set();
@@ -195,7 +228,7 @@ function buildHTML(audit) {
         <tr><th>Item</th><th>Expected</th><th>Actual</th><th>Variance</th><th>Lot Code</th><th>Condition</th></tr>
       </thead>
       <tbody>
-        ${lineItems.map(li => `
+        ${effectiveLineItems.map(li => `
           <tr>
             <td>${li.item_name}</td>
             <td>${li.expected_qty}</td>
@@ -260,12 +293,13 @@ router.get('/:id', async (req, res) => {
 
     const lineItems = db.prepare('SELECT * FROM audit_line_items WHERE audit_id = ? ORDER BY sort_order').all(req.params.id);
     const discrepancies = db.prepare('SELECT * FROM audit_discrepancies WHERE audit_id = ?').all(req.params.id);
-    // Fetch photo-type questions so buildHTML can map question_answers → labelled photos
-    const photoQuestions = audit.audit_type_id
-      ? db.prepare("SELECT id, question FROM audit_questions WHERE audit_type_id = ? AND type = 'photo' AND active = 1 ORDER BY sort_order").all(audit.audit_type_id)
+    // Fetch all questions so buildHTML can reconstruct line items and label photos
+    const allQuestions = audit.audit_type_id
+      ? db.prepare("SELECT id, question, type, section FROM audit_questions WHERE audit_type_id = ? AND active = 1 ORDER BY sort_order").all(audit.audit_type_id)
       : [];
+    const photoQuestions = allQuestions.filter(q => q.type === 'photo');
 
-    const pdfPath = await generatePDF({ ...audit, lineItems, discrepancies, photoQuestions }, filename);
+    const pdfPath = await generatePDF({ ...audit, lineItems, discrepancies, allQuestions, photoQuestions }, filename);
 
     if (!pdfPath) return res.status(500).json({ error: 'PDF generation failed' });
 

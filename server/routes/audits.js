@@ -267,9 +267,10 @@ router.post('/:id/submit', async (req, res) => {
 
     const lineItems     = db.prepare('SELECT * FROM audit_line_items WHERE audit_id = ? ORDER BY sort_order').all(req.params.id);
     const discrepancies = db.prepare('SELECT * FROM audit_discrepancies WHERE audit_id = ?').all(req.params.id);
-    const photoQuestions = audit.audit_type_id
-      ? db.prepare("SELECT id, question FROM audit_questions WHERE audit_type_id = ? AND type = 'photo' AND active = 1 ORDER BY sort_order").all(audit.audit_type_id)
+    const allQuestions = audit.audit_type_id
+      ? db.prepare("SELECT id, question, type, section FROM audit_questions WHERE audit_type_id = ? AND active = 1 ORDER BY sort_order").all(audit.audit_type_id)
       : [];
+    const photoQuestions = allQuestions.filter(q => q.type === 'photo');
 
     const dateStr     = dayjs(audit.audit_date).format('YYYY-MM-DD');
     const cleanEntity = (audit.type === 'outbound' ? (audit.customer || 'Unknown') : (audit.supplier || 'Unknown')).replace(/\s+/g, '-');
@@ -296,7 +297,7 @@ router.post('/:id/submit', async (req, res) => {
 
     // PDF — fire and forget
     const { generatePDF } = require('./pdf');
-    generatePDF({ ...submittedAudit, lineItems, discrepancies, photoQuestions }, pdfFilename)
+    generatePDF({ ...submittedAudit, lineItems, discrepancies, allQuestions, photoQuestions }, pdfFilename)
       .then(pdfPath => db.prepare('UPDATE audits SET pdf_path = ? WHERE id = ?').run(pdfPath, audit.id))
       .catch(err => console.error('PDF Error:', err));
 
