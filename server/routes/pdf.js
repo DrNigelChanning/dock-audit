@@ -76,20 +76,39 @@ function buildHTML(audit) {
   const dateStr = dayjs(audit.audit_date).format('MMMM D, YYYY');
   const timeStr = dayjs(audit.submitted_at || audit.audit_date).format('h:mm A');
 
-  // --- Score Labels ---
-  const qualityLabel = { 1: '🔴 Red — Action Required', 2: '🟡 Yellow — Needs Attention', 3: '🟢 Green — Meets Expectations' };
+  // --- Score Labels (CSS dots instead of emoji — Puppeteer can't render emoji on Linux) ---
+  const dot = (color) => `<span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:50%;vertical-align:middle;margin-right:5px;"></span>`;
+  const qualityLabel = {
+    1: `${dot('#dc2626')}Red — Action Required`,
+    2: `${dot('#ca8a04')}Yellow — Needs Attention`,
+    3: `${dot('#16a34a')}Green — Meets Expectations`
+  };
 
   // --- Photo Section Logic ---
-  const photos = [
-    { label: 'Temp Gun', src: getBase64Image(audit.temp_gun_photo) },
-    { label: 'Temp Control', src: getBase64Image(audit.temp_control_photo) },
-    { label: 'Truck Condition', src: getBase64Image(audit.truck_condition_photo) },
-    { label: 'BOL Photo', src: getBase64Image(audit.bol_photo) }
-  ].filter(p => p.src);
+  // Scan question_answers for any photo-type answers (file paths starting with /uploads/)
+  const questionAnswers = (() => {
+    try { return audit.question_answers ? JSON.parse(audit.question_answers) : {}; }
+    catch (e) { return {}; }
+  })();
+  const photoQuestions = audit.photoQuestions || [];
+
+  // Build photos from question_answers using photo-type question labels
+  const seenPaths = new Set();
+  const photos = photoQuestions
+    .map(q => {
+      const val = questionAnswers[q.id];
+      if (!val || typeof val !== 'string') return null;
+      // Normalize: could be a path like /uploads/foo.jpg or just a filename
+      const src = getBase64Image(val);
+      if (!src || seenPaths.has(val)) return null;
+      seenPaths.add(val);
+      return { label: q.question, src };
+    })
+    .filter(Boolean);
 
   const photoHtml = photos.length > 0 ? `
     <div style="page-break-before: always; padding: 40px;">
-      <h3 style="font-size:14px; font-weight:700; color:#1e3a5f; text-transform:uppercase; border-bottom:2px solid #1e3a5f; padding-bottom:10px; margin-bottom:20px;">📸 Audit Photo Documentation</h3>
+      <h3 style="font-size:14px; font-weight:700; color:#1e3a5f; text-transform:uppercase; border-bottom:2px solid #1e3a5f; padding-bottom:10px; margin-bottom:20px;">Audit Photo Documentation</h3>
       <table style="width:100%; border-spacing: 20px; border-collapse: separate; margin-left: -20px;">
         ${photos.reduce((acc, curr, i) => {
           if (i % 2 === 0) acc.push([curr]);
@@ -145,7 +164,7 @@ function buildHTML(audit) {
   <div class="content">
     <div style="background:${audit.has_discrepancy ? '#fee2e2' : '#dcfce7'} !important; border-left: 4px solid ${audit.has_discrepancy ? '#dc2626' : '#16a34a'}; padding: 12px 16px; margin-bottom: 24px; border-radius: 4px;">
       <div style="font-weight: 700; color: ${audit.has_discrepancy ? '#dc2626' : '#15803d'}; font-size: 14px;">
-        ${audit.has_discrepancy ? '⚠️ DISCREPANCIES FOUND' : '✅ Clean Audit — No Discrepancies'}
+        ${audit.has_discrepancy ? '[!] DISCREPANCIES FOUND' : '[&#10003;] Clean Audit — No Discrepancies'}
       </div>
     </div>
 
@@ -165,7 +184,7 @@ function buildHTML(audit) {
     ${audit.is_refrigerated ? `
     <div style="background:${audit.temp_in_range ? '#f0fdf4' : '#fef2f2'} !important; border-radius: 8px; padding: 16px; margin-bottom: 24px; border: 1px solid ${audit.temp_in_range ? '#bcf0da' : '#fecaca'}">
       <div style="font-weight:700; font-size:13px; color:${audit.temp_in_range ? '#15803d' : '#dc2626'}; margin-bottom:4px">
-        🌡️ Temperature Check — ${audit.temp_in_range ? 'IN RANGE' : 'OUT OF RANGE'}
+        Temp Check — ${audit.temp_in_range ? 'IN RANGE' : 'OUT OF RANGE'}
       </div>
       <div style="font-size:13px"><strong>Truck interior temp:</strong> ${audit.truck_temp_f ?? '—'}°F</div>
     </div>` : ''}
@@ -201,11 +220,11 @@ function buildHTML(audit) {
         <table style="width:100%; font-size:12px">
           <tr>
             <td style="padding-bottom:5px">Packing List</td>
-            <td style="text-align:right; font-weight:700; padding-bottom:5px">${audit.packing_list_received ? 'Yes ✅' : 'No 🔴'}</td>
+            <td style="text-align:right; font-weight:700; padding-bottom:5px">${audit.packing_list_received ? 'Yes &#10003;' : 'No &#10007;'}</td>
           </tr>
           <tr>
             <td>COA Received</td>
-            <td style="text-align:right; font-weight:700">${audit.coa_received ? 'Yes ✅' : 'No 🔴'}</td>
+            <td style="text-align:right; font-weight:700">${audit.coa_received ? 'Yes &#10003;' : 'No &#10007;'}</td>
           </tr>
         </table>
       </div>
@@ -241,8 +260,12 @@ router.get('/:id', async (req, res) => {
 
     const lineItems = db.prepare('SELECT * FROM audit_line_items WHERE audit_id = ? ORDER BY sort_order').all(req.params.id);
     const discrepancies = db.prepare('SELECT * FROM audit_discrepancies WHERE audit_id = ?').all(req.params.id);
+    // Fetch photo-type questions so buildHTML can map question_answers → labelled photos
+    const photoQuestions = audit.audit_type_id
+      ? db.prepare("SELECT id, question FROM audit_questions WHERE audit_type_id = ? AND type = 'photo' AND active = 1 ORDER BY sort_order").all(audit.audit_type_id)
+      : [];
 
-    const pdfPath = await generatePDF({ ...audit, lineItems, discrepancies }, filename);
+    const pdfPath = await generatePDF({ ...audit, lineItems, discrepancies, photoQuestions }, filename);
 
     if (!pdfPath) return res.status(500).json({ error: 'PDF generation failed' });
 

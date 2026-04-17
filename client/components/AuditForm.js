@@ -110,7 +110,7 @@ function DiscrepancyEditor({ discrepancy, index, auditId, onChange, onRemove }) 
 
 // ─── DynamicQuestion ─────────────────────────────────────────────────────────
 // Renders a single question of any type.
-function DynamicQuestion({ q, value, onChange, auditId }) {
+function DynamicQuestion({ q, value, onChange, auditId, loadType }) {
   // note type = instruction block, no answer
   if (q.type === 'note') {
     return (
@@ -146,19 +146,23 @@ function DynamicQuestion({ q, value, onChange, auditId }) {
     <NumberField label={q.question} value={value} onChange={onChange} required={!!q.required} />
   );
 
-  if (q.type === 'temperature') return (
-    <div>
-      <NumberField label={q.question} value={value} onChange={onChange} unit="°F" required={!!q.required} />
-      {value !== '' && value !== null && value !== undefined && (() => {
-        const ok = tempInRange(value, 'refrigerated_inbound');
-        return (
-          <div className={`temp-display ${ok === true ? 'temp-ok' : ok === false ? 'temp-fail' : 'temp-warn'}`} style={{ marginTop: -8, marginBottom: 12 }}>
-            {value}°F {ok === true ? '✅ In range' : ok === false ? '🔴 OUT OF RANGE' : ''}
-          </div>
-        );
-      })()}
-    </div>
-  );
+  if (q.type === 'temperature') {
+    const tempSpec = loadType === 'Frozen' ? 'frozen_inbound' : 'refrigerated_inbound';
+    const ranges = { frozen_inbound: 'below 32°F', refrigerated_inbound: '33–40°F' };
+    return (
+      <div>
+        <NumberField label={q.question} value={value} onChange={onChange} unit="°F" required={!!q.required} />
+        {value !== '' && value !== null && value !== undefined && (() => {
+          const ok = tempInRange(value, tempSpec);
+          return (
+            <div className={`temp-display ${ok === true ? 'temp-ok' : ok === false ? 'temp-fail' : 'temp-warn'}`} style={{ marginTop: -8, marginBottom: 12 }}>
+              {value}°F {ok === true ? '✓ In range' : ok === false ? '⚠ OUT OF RANGE' : ''} ({ranges[tempSpec]})
+            </div>
+          );
+        })()}
+      </div>
+    );
+  }
 
   // default: text
   return (
@@ -234,8 +238,8 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
     }).catch(console.error);
   }, [draftAudit?.id]);
 
-  // Steps = Setup + each section + Line Items + Review
-  const STEPS = loading ? ['Loading…'] : ['Setup', ...sections, 'Line Items', 'Review'];
+  // Steps = Setup + each section + Review (Line Items removed — questions handle item data)
+  const STEPS = loading ? ['Loading…'] : ['Setup', ...sections, 'Review'];
   const totalSteps = STEPS.length;
 
   const setAnswer = (qId, val) => setAnswers(prev => ({ ...prev, [qId]: val }));
@@ -279,25 +283,6 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
       return;
     }
 
-    if (stepName === 'Line Items') {
-      for (const li of lineItems) {
-        if (li._saved) {
-          await api.patch(`/api/audits/${id}/line-items/${li._id}`, li);
-        } else if (li.item_name) {
-          const { id: liId } = await api.post(`/api/audits/${id}/line-items`, li);
-          li._id = liId;
-          li._saved = true;
-        }
-      }
-      for (const d of discrepancies) {
-        if (!d._saved && d.discrepancy_type) {
-          await api.post(`/api/audits/${id}/discrepancies`, d);
-          d._saved = true;
-        }
-      }
-      return;
-    }
-
     if (stepName === 'Review') return;
 
     // For a section step — save the question_answers for questions in this section
@@ -327,6 +312,7 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
       }
       if (ql.includes('temperature gun photo') && q.type === 'photo') patch.temp_gun_photo = val;
       if (ql.includes('temperature control') && q.type === 'photo')   patch.temp_control_photo = val;
+      if (ql.includes('load type')) patch.is_refrigerated = val === 'Ambient' ? 0 : 1;
       if (ql.includes('truck condition') || ql.includes('clean and')) patch.truck_condition = typeof val === 'boolean' ? (val ? 'Clean' : 'Issues') : val;
       if (ql.includes('packing list'))          patch.packing_list_received = val;
       if (ql.includes('coa'))                   patch.coa_received = val;
@@ -355,11 +341,6 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
           if (val === undefined || val === null || val === '') missing.push(q.question);
         });
       return missing;
-    }
-
-    if (stepName === 'Line Items') {
-      // At least one item required — warn but don't hard-block (some audits may have zero items)
-      return [];
     }
 
     if (stepName === 'Review') {
@@ -481,8 +462,20 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
     );
   };
 
+  // Find the Load Type answer from any section (used for temp conditional logic)
+  const loadTypeQ   = questions.find(q => q.question.toLowerCase().includes('load type'));
+  const loadType    = loadTypeQ ? answers[loadTypeQ.id] : null;
+  const isAmbient   = loadType === 'Ambient';
+
   const renderSection = (sectionName) => {
-    const sectionQs = questions.filter(q => q.section === sectionName);
+    const allSectionQs = questions.filter(q => q.section === sectionName);
+    // Hide temperature questions (and temp-only photos) when load type is Ambient
+    const sectionQs = allSectionQs.filter(q => {
+      if (!isAmbient) return true;
+      const ql = q.question.toLowerCase();
+      return !(q.type === 'temperature' || ql.includes('temperature') || ql.includes('temp gun') || ql.includes('temp control') || ql.includes('setpoint'));
+    });
+
     return (
       <div className="card">
         <div className="card-header">
@@ -497,8 +490,16 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
             key={q.id}
             q={q}
             value={answers[q.id]}
-            onChange={val => setAnswer(q.id, val)}
+            onChange={val => {
+              setAnswer(q.id, val);
+              // Map load type to is_refrigerated for downstream use
+              if (q.question.toLowerCase().includes('load type')) {
+                const patch = { is_refrigerated: val === 'Ambient' ? 0 : 1 };
+                if (auditId) api.patch(`/api/audits/${auditId}`, patch).catch(console.error);
+              }
+            }}
             auditId={auditId}
+            loadType={loadType}
           />
         ))}
       </div>
@@ -640,9 +641,8 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
   const renderStep = () => {
     if (loading) return <div style={{ color: 'var(--gray-400)', padding: 32 }}>Loading questions…</div>;
     const name = STEPS[step];
-    if (name === 'Setup')      return renderSetup();
-    if (name === 'Line Items') return renderLineItems();
-    if (name === 'Review')     return renderReview();
+    if (name === 'Setup')  return renderSetup();
+    if (name === 'Review') return renderReview();
     return renderSection(name);
   };
 
