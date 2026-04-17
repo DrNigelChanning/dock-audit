@@ -186,7 +186,7 @@
         <div class="logo-sub">QUESTION EDITOR — LIVE</div>
       </div>
     </div>
-    <div class="header-actions">
+    <div class="header-actions" id="header-actions">
       <button class="btn btn-outline btn-sm" onclick="openSectionReorder()">↕ Reorder Sections</button>
       <button class="btn btn-sm btn-yellow" onclick="openAddNote()">+ Add Note</button>
       <button class="btn btn-primary btn-sm" onclick="openAddQuestion()">+ Add Question</button>
@@ -341,6 +341,37 @@
   </div>
 </div>
 
+<!-- Team Member Modal -->
+<div class="overlay" id="member-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="member-modal-title">Add Team Member</div>
+      <button class="icon-btn" onclick="closeModal('member-modal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Name</label>
+        <input type="text" id="f-member-name" placeholder="e.g. Stephen Torres" />
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Role</label>
+          <input type="text" id="f-member-role" placeholder="e.g. Receiving, QC, Inventory" />
+        </div>
+        <div class="field">
+          <label>Location</label>
+          <input type="text" id="f-member-location" placeholder="e.g. Monarch, Horizon" />
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" id="member-delete-btn" onclick="deleteMember(editingMemberId, document.getElementById('f-member-name').value)" style="display:none;color:var(--red);margin-right:auto">Remove</button>
+      <button class="btn btn-ghost" onclick="closeModal('member-modal')">Cancel</button>
+      <button class="btn btn-primary" id="member-modal-save" onclick="saveMember()">Add Member</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast-wrap" id="toast-wrap"></div>
 
 <script>
@@ -356,6 +387,9 @@ let editingTypeId = null;
 let selectedColor = TAB_COLORS[0];
 let dragSrcId = null;
 let serverBase = 'http://localhost:3001';
+let currentView = 'questions'; // 'questions' | 'team'
+let teamMembers = [];
+let editingMemberId = null;
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
@@ -396,6 +430,7 @@ async function loadAll() {
   if (!currentTypeId || !auditTypes.find(t => t.id === currentTypeId)) {
     currentTypeId = auditTypes[0]?.id ?? null;
   }
+  teamMembers = await api('GET', '/api/team');
   render();
 }
 
@@ -410,7 +445,7 @@ function setStatus(state, msg) {
 function renderTabs() {
   let html = auditTypes.map(t => {
     const count = (questions[t.id] || []).length;
-    const active = t.id === currentTypeId ? 'active' : '';
+    const active = (currentView === 'questions' && t.id === currentTypeId) ? 'active' : '';
     return `<div class="tab ${active}" style="--tab-color:${t.color}" onclick="switchTab('${t.id}')">
       ${t.icon} ${esc(t.name)}
       <span class="tab-count">${count}</span>
@@ -418,7 +453,19 @@ function renderTabs() {
     </div>`;
   }).join('');
   html += `<button class="tab-add" onclick="openAddType()">＋ New Audit Type</button>`;
+  const teamActive = currentView === 'team' ? 'active' : '';
+  const activeCount = teamMembers.filter(m => m.active).length;
+  html += `<div class="tab ${teamActive}" style="--tab-color:#a78bfa;margin-left:auto" onclick="switchToTeam()">
+    👥 Team <span class="tab-count">${activeCount}</span>
+  </div>`;
   document.getElementById('tab-bar').innerHTML = html;
+
+  // Update header buttons based on view
+  document.getElementById('header-actions').innerHTML = currentView === 'team'
+    ? `<button class="btn btn-primary btn-sm" onclick="openAddMember()">+ Add Member</button>`
+    : `<button class="btn btn-outline btn-sm" onclick="openSectionReorder()">↕ Reorder Sections</button>
+       <button class="btn btn-sm btn-yellow" onclick="openAddNote()">+ Add Note</button>
+       <button class="btn btn-primary btn-sm" onclick="openAddQuestion()">+ Add Question</button>`;
 }
 
 function renderQuestions() {
@@ -490,8 +537,55 @@ function renderQuestions() {
   area.innerHTML = html;
 }
 
-function render() { renderTabs(); renderQuestions(); }
-function switchTab(id) { currentTypeId = id; render(); }
+function render() {
+  renderTabs();
+  if (currentView === 'team') renderTeam();
+  else renderQuestions();
+}
+function switchTab(id) { currentView = 'questions'; currentTypeId = id; render(); }
+function switchToTeam() { currentView = 'team'; render(); }
+
+// ── Team Render ───────────────────────────────────────────────────────────────
+
+function renderTeam() {
+  const area = document.getElementById('question-area');
+  if (!teamMembers.length) {
+    area.innerHTML = `<div class="empty"><div class="empty-icon">👥</div><div class="empty-title">No team members yet</div><div>Add your team so auditors can select their name when starting an audit.</div></div>`;
+    return;
+  }
+  const active = teamMembers.filter(m => m.active);
+  const inactive = teamMembers.filter(m => !m.active);
+
+  let html = '';
+  if (active.length) {
+    html += `<div class="section-header"><div class="section-label">Active Members</div><div style="font-family:var(--mono);font-size:11px;color:var(--text-muted)">${active.length} member${active.length!==1?'s':''}</div></div><div class="question-list">`;
+    active.forEach(m => { html += memberCard(m); });
+    html += `</div>`;
+  }
+  if (inactive.length) {
+    html += `<div class="section-header" style="margin-top:28px"><div class="section-label" style="color:var(--text-muted)">Inactive</div></div><div class="question-list">`;
+    inactive.forEach(m => { html += memberCard(m); });
+    html += `</div>`;
+  }
+  area.innerHTML = html;
+}
+
+function memberCard(m) {
+  const roleStr = [m.role, m.location].filter(Boolean).join(' · ');
+  return `<div class="q-card" style="opacity:${m.active?1:0.4}">
+    <div class="q-body" style="padding-left:16px">
+      <div class="q-info">
+        <div class="q-text">${esc(m.name)}</div>
+        ${roleStr ? `<div class="q-meta"><span class="type-badge">${esc(roleStr)}</span></div>` : ''}
+      </div>
+      <div class="q-actions">
+        <button class="toggle ${m.active?'on':''}" onclick="toggleMember('${m.id}',${m.active})"></button>
+        <button class="icon-btn" onclick="openEditMember('${m.id}')">✎</button>
+        <button class="icon-btn delete" onclick="deleteMember('${m.id}','${esc(m.name)}')">🗑</button>
+      </div>
+    </div>
+  </div>`;
+}
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
 
@@ -903,6 +997,85 @@ async function saveSectionOrder() {
     toast('Error: ' + e.message, 'error');
   } finally {
     btn.disabled = false;
+  }
+}
+
+// ── Team CRUD ─────────────────────────────────────────────────────────────────
+
+function openAddMember() {
+  editingMemberId = null;
+  document.getElementById('member-modal-title').textContent = 'Add Team Member';
+  document.getElementById('member-modal-save').textContent = 'Add Member';
+  document.getElementById('f-member-name').value = '';
+  document.getElementById('f-member-role').value = '';
+  document.getElementById('f-member-location').value = '';
+  document.getElementById('member-delete-btn').style.display = 'none';
+  openModal('member-modal');
+  setTimeout(() => document.getElementById('f-member-name').focus(), 100);
+}
+
+function openEditMember(id) {
+  const m = teamMembers.find(x => x.id === id); if (!m) return;
+  editingMemberId = id;
+  document.getElementById('member-modal-title').textContent = 'Edit Member';
+  document.getElementById('member-modal-save').textContent = 'Save Changes';
+  document.getElementById('f-member-name').value = m.name;
+  document.getElementById('f-member-role').value = m.role || '';
+  document.getElementById('f-member-location').value = m.location || '';
+  document.getElementById('member-delete-btn').style.display = 'inline-flex';
+  openModal('member-modal');
+  setTimeout(() => document.getElementById('f-member-name').focus(), 100);
+}
+
+async function saveMember() {
+  const name = document.getElementById('f-member-name').value.trim();
+  if (!name) { toast('Name is required', 'error'); return; }
+  const role = document.getElementById('f-member-role').value.trim();
+  const location = document.getElementById('f-member-location').value.trim();
+  const btn = document.getElementById('member-modal-save');
+  btn.disabled = true;
+  try {
+    if (editingMemberId) {
+      await api('PATCH', `/api/team/${editingMemberId}`, { name, role, location });
+      const m = teamMembers.find(x => x.id === editingMemberId);
+      if (m) Object.assign(m, { name, role, location });
+      toast('✓ Updated', 'success');
+    } else {
+      const result = await api('POST', '/api/team', { name, role, location });
+      teamMembers.push({ id: result.id, name, role, location, active: 1 });
+      toast(`✓ ${name} added`, 'success');
+    }
+    closeModal('member-modal');
+    render();
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function toggleMember(id, currentActive) {
+  const newVal = currentActive ? 0 : 1;
+  try {
+    await api('PATCH', `/api/team/${id}`, { active: newVal });
+    const m = teamMembers.find(x => x.id === id);
+    if (m) m.active = newVal;
+    render();
+    toast(newVal ? '✓ Activated' : 'Member hidden from auditors', 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
+  }
+}
+
+async function deleteMember(id, name) {
+  if (!confirm(`Remove ${name} from the team? This cannot be undone.`)) return;
+  try {
+    await api('DELETE', `/api/team/${id}`);
+    teamMembers = teamMembers.filter(x => x.id !== id);
+    render();
+    toast(`${name} removed`, 'success');
+  } catch(e) {
+    toast('Error: ' + e.message, 'error');
   }
 }
 
