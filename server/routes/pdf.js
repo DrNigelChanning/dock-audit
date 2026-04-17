@@ -164,7 +164,7 @@ function buildHTML(audit) {
   <div class="content">
     <div style="background:${audit.has_discrepancy ? '#fee2e2' : '#dcfce7'} !important; border-left: 4px solid ${audit.has_discrepancy ? '#dc2626' : '#16a34a'}; padding: 12px 16px; margin-bottom: 24px; border-radius: 4px;">
       <div style="font-weight: 700; color: ${audit.has_discrepancy ? '#dc2626' : '#15803d'}; font-size: 14px;">
-        ${audit.has_discrepancy ? '[!] DISCREPANCIES FOUND' : '[&#10003;] Clean Audit — No Discrepancies'}
+        ${audit.has_discrepancy ? 'DISCREPANCIES FOUND' : 'CLEAN AUDIT — No Discrepancies'}
       </div>
     </div>
 
@@ -212,7 +212,7 @@ function buildHTML(audit) {
         <h3 style="font-size:11px; font-weight:700; color:#6b7280; text-transform:uppercase; margin-bottom:10px">SCORECARD IMPACT</h3>
         <div style="background:#f9fafb !important; padding:12px; border-radius:8px; border:1px solid #e5e7eb">
           <div style="font-size:11px; color:#6b7280; margin-bottom:4px">QUALITY/CONDITION</div>
-          <div style="font-weight:700">${qualityLabel[audit.quality_score || audit.qualityScore] || '🟢 Green — Meets Expectations'}</div>
+          <div style="font-weight:700">${qualityLabel[audit.quality_score || audit.qualityScore] || `${dot('#16a34a')}Green — Meets Expectations`}</div>
         </div>
       </div>
       <div style="flex:1">
@@ -220,11 +220,11 @@ function buildHTML(audit) {
         <table style="width:100%; font-size:12px">
           <tr>
             <td style="padding-bottom:5px">Packing List</td>
-            <td style="text-align:right; font-weight:700; padding-bottom:5px">${audit.packing_list_received ? 'Yes &#10003;' : 'No &#10007;'}</td>
+            <td style="text-align:right; font-weight:700; padding-bottom:5px; color:${audit.packing_list_received ? '#15803d' : '#dc2626'}">${audit.packing_list_received ? 'YES' : 'NO'}</td>
           </tr>
           <tr>
             <td>COA Received</td>
-            <td style="text-align:right; font-weight:700">${audit.coa_received ? 'Yes &#10003;' : 'No &#10007;'}</td>
+            <td style="text-align:right; font-weight:700; color:${audit.coa_received ? '#15803d' : '#dc2626'}">${audit.coa_received ? 'YES' : 'NO'}</td>
           </tr>
         </table>
       </div>
