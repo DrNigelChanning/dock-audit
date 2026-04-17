@@ -2,7 +2,9 @@
 const path = require('path');
 const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, '../../data/dock_audit.db');
+// DB_PATH: use env var (set to /data/dock_audit.db on Railway with mounted volume)
+// Falls back to local data/ dir for development
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data/dock_audit.db');
 const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 const dataDir = path.dirname(DB_PATH);
