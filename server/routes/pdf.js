@@ -38,10 +38,17 @@ async function generatePDF(audit, filename) {
   const html = buildHTML(audit);
   const outputPath = path.join(PDF_DIR, filename);
 
-  const browser = await puppeteer.launch({
+  // On Railway, PUPPETEER_EXECUTABLE_PATH points at the nix-installed chromium
+  // (see nixpacks.toml). Locally it's unset and puppeteer falls back to its
+  // own bundled chromium, which SETUP.md tells Phil to let npm install.
+  const launchOpts = {
     headless: 'new',
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--allow-file-access-from-files']
-  });
+  };
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  const browser = await puppeteer.launch(launchOpts);
 
   try {
     const page = await browser.newPage();

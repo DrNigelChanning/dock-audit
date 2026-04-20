@@ -1,0 +1,21 @@
+# Railway / Nixpacks build config for dock-audit.
+#
+# Why this file exists:
+#   puppeteer@22 downloads ~300MB of Chromium during `npm install`.
+#   On Railway that fetch times out before the build finishes.
+#   Instead, we skip the download and install Chromium via nix,
+#   then point puppeteer at the system binary at runtime.
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "chromium"]
+
+[phases.install]
+# Skip puppeteer's chromium download entirely — we use the nix one.
+cmds = ["npm ci --omit=dev"]
+
+[start]
+cmd = "node server/index.js"
+
+[variables]
+PUPPETEER_SKIP_DOWNLOAD = "true"
+PUPPETEER_EXECUTABLE_PATH = "/usr/bin/chromium"
