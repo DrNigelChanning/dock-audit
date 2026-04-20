@@ -12,13 +12,57 @@ if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 
 const initSqlJs = require('sql.js');
 
+// ─── Durable write ─────────────────────────────────────────────────────
+// fs.writeFileSync lands data in the OS page cache but doesn't guarantee
+// it reaches disk. On Railway, containers can receive SIGTERM at any time
+// (redeploys, restarts) — if fsync hasn't run, recent writes are lost even
+// though the process "saved" successfully. Atomic write + fsync the file
+// AND the directory is the POSIX-durable pattern.
+function writeFileDurable(targetPath, buffer) {
+  const tmpPath = targetPath + '.tmp';
+  const dir = path.dirname(targetPath);
+
+  const fd = fs.openSync(tmpPath, 'w');
+  try {
+    fs.writeSync(fd, buffer, 0, buffer.length, 0);
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  fs.renameSync(tmpPath, targetPath);
+
+  // fsync the directory so the rename itself is durable
+  try {
+    const dfd = fs.openSync(dir, 'r');
+    try { fs.fsyncSync(dfd); } finally { fs.closeSync(dfd); }
+  } catch (e) {
+    // Some filesystems (notably on Windows) don't allow fsync on a
+    // directory fd — not fatal, the file fsync already covered the write.
+  }
+}
+
 let _saveTimer = null;
+let _pendingDb = null;
 function scheduleSave(db) {
+  _pendingDb = db;
   if (_saveTimer) clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
+    _saveTimer = null;
     const data = db.export();
-    fs.writeFileSync(DB_PATH, Buffer.from(data));
+    writeFileDurable(DB_PATH, Buffer.from(data));
   }, 500);
+}
+
+// Flush any pending debounced save immediately. Called on SIGTERM so we
+// don't lose the last ~500ms of writes when Railway stops the container.
+function flushPendingSave() {
+  if (_saveTimer && _pendingDb) {
+    clearTimeout(_saveTimer);
+    _saveTimer = null;
+    const data = _pendingDb.export();
+    writeFileDurable(DB_PATH, Buffer.from(data));
+    console.log('[db] flushed pending save on shutdown');
+  }
 }
 
 class SyncDB {
@@ -69,8 +113,24 @@ class SyncDB {
 
   save() {
     const data = this._db.export();
-    fs.writeFileSync(DB_PATH, Buffer.from(data));
+    writeFileDurable(DB_PATH, Buffer.from(data));
   }
+}
+
+// ─── Shutdown handlers ─────────────────────────────────────────────────
+// Railway sends SIGTERM to stop containers; flush pending writes before
+// the kernel reaps the process so nothing is left in the page cache.
+let _shutdownRegistered = false;
+function registerShutdownHandlers() {
+  if (_shutdownRegistered) return;
+  _shutdownRegistered = true;
+  const onExit = (sig) => {
+    try { flushPendingSave(); } catch (e) { console.error('[db] flush failed:', e.message); }
+    // Give the log a chance to ship before exit
+    process.nextTick(() => process.exit(0));
+  };
+  process.on('SIGTERM', () => onExit('SIGTERM'));
+  process.on('SIGINT',  () => onExit('SIGINT'));
 }
 
 async function init() {
@@ -186,6 +246,7 @@ async function init() {
   seed(wrapper);
 
   wrapper.save();
+  registerShutdownHandlers();
 
   // ─── Post-save diagnostic ──────────────────────────────────────────────
   try {
