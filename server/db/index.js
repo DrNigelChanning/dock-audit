@@ -74,6 +74,31 @@ class SyncDB {
 }
 
 async function init() {
+  // ─── Persistence diagnostic (remove once volume behavior is confirmed) ──
+  try {
+    const dir = path.dirname(DB_PATH);
+    const contents = fs.readdirSync(dir);
+    console.log(`[boot-diag] DB_PATH=${DB_PATH}`);
+    console.log(`[boot-diag] ${dir} contents:`, JSON.stringify(contents));
+    if (fs.existsSync(DB_PATH)) {
+      const st = fs.statSync(DB_PATH);
+      console.log(`[boot-diag] DB found at boot: ${st.size} bytes, mtime=${st.mtime.toISOString()}`);
+    } else {
+      console.log(`[boot-diag] DB NOT found at boot: ${DB_PATH}`);
+    }
+    // Quick mount-persistence probe: touch a file and check it on next boot
+    const probePath = path.join(dir, 'persistence.probe');
+    if (fs.existsSync(probePath)) {
+      console.log(`[boot-diag] Persistence probe survived: ${fs.readFileSync(probePath, 'utf8')}`);
+    } else {
+      console.log(`[boot-diag] Persistence probe NOT found — writing fresh`);
+    }
+    fs.writeFileSync(probePath, `boot=${new Date().toISOString()}, pid=${process.pid}`);
+  } catch (e) {
+    console.log(`[boot-diag] error inspecting ${path.dirname(DB_PATH)}: ${e.message}`);
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   const SQL = await initSqlJs();
   let db;
   if (fs.existsSync(DB_PATH)) {
@@ -161,6 +186,20 @@ async function init() {
   seed(wrapper);
 
   wrapper.save();
+
+  // ─── Post-save diagnostic ──────────────────────────────────────────────
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const st = fs.statSync(DB_PATH);
+      console.log(`[boot-diag] After init save: DB at ${DB_PATH} is ${st.size} bytes`);
+    } else {
+      console.log(`[boot-diag] AFTER SAVE: DB FILE MISSING at ${DB_PATH} — write silently failed`);
+    }
+  } catch (e) {
+    console.log(`[boot-diag] post-save stat failed: ${e.message}`);
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   return wrapper;
 }
 
