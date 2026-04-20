@@ -89,13 +89,15 @@ router.get('/:id/questions', async (req, res) => {
 router.post('/:id/questions', async (req, res) => {
   try {
     const db = await getDB;
-    const { section, question, type = 'text', options, required = 1, sort_order = 0 } = req.body;
+    const { section, question, type = 'text', options, required = 1, sort_order = 0, allow_multiple = 0 } = req.body;
     if (!section || !question) return res.status(400).json({ error: 'section and question are required' });
     const id = uuidv4();
+    // allow_multiple only applies to photo questions; clamp to 0 otherwise
+    const allowMulti = type === 'photo' ? (allow_multiple ? 1 : 0) : 0;
     db.prepare(`
-      INSERT INTO audit_questions (id, audit_type_id, section, question, type, options, required, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, req.params.id, section, question, type, options ? JSON.stringify(options) : null, required, sort_order);
+      INSERT INTO audit_questions (id, audit_type_id, section, question, type, options, required, sort_order, allow_multiple)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, req.params.id, section, question, type, options ? JSON.stringify(options) : null, required, sort_order, allowMulti);
     res.status(201).json({ id });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -106,13 +108,23 @@ router.post('/:id/questions', async (req, res) => {
 router.patch('/:id/questions/:qid', async (req, res) => {
   try {
     const db = await getDB;
-    const allowed = ['section', 'question', 'type', 'options', 'required', 'active', 'sort_order'];
+    const allowed = ['section', 'question', 'type', 'options', 'required', 'active', 'sort_order', 'allow_multiple'];
     const updates = {};
     allowed.forEach(k => {
       if (req.body[k] !== undefined) {
-        updates[k] = k === 'options' && req.body[k] ? JSON.stringify(req.body[k]) : req.body[k];
+        if (k === 'options' && req.body[k]) {
+          updates[k] = JSON.stringify(req.body[k]);
+        } else if (k === 'allow_multiple') {
+          updates[k] = req.body[k] ? 1 : 0;
+        } else {
+          updates[k] = req.body[k];
+        }
       }
     });
+    // If type is being changed away from photo, force allow_multiple off
+    if (updates.type !== undefined && updates.type !== 'photo') {
+      updates.allow_multiple = 0;
+    }
     if (!Object.keys(updates).length) return res.json({ message: 'No changes' });
     const set = Object.keys(updates).map(k => `${k} = ?`).join(', ');
     db.prepare(`UPDATE audit_questions SET ${set} WHERE id = ? AND audit_type_id = ?`).run(...Object.values(updates), req.params.qid, req.params.id);

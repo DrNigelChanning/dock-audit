@@ -3,7 +3,7 @@
 
 const { useState, useEffect, useRef } = React;
 const { api, calcVariance, varianceClass, tempInRange, fmtDate } = window.appUtils;
-const { PhotoUpload, YesNo, ConditionSelect, SelectField, TextField, NumberField, Alert, Badge, StepProgress } = window.UI;
+const { PhotoUpload, MultiPhotoUpload, YesNo, ConditionSelect, SelectField, TextField, NumberField, Alert, Badge, StepProgress } = window.UI;
 
 const DISCREPANCY_TYPES = [
   'Short shipment', 'Over shipment', 'Damaged goods', 'Wrong item',
@@ -134,7 +134,11 @@ function DynamicQuestion({ q, value, onChange, auditId, loadType }) {
   if (q.type === 'photo') return (
     <div className="form-group">
       {label}
-      <PhotoUpload auditId={auditId} label={q.question} value={value} onChange={onChange} />
+      {q.allow_multiple ? (
+        <MultiPhotoUpload auditId={auditId} label={q.question} value={value} onChange={onChange} required={!!q.required} />
+      ) : (
+        <PhotoUpload auditId={auditId} label={q.question} value={value} onChange={onChange} />
+      )}
     </div>
   );
 
@@ -345,7 +349,8 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
         .filter(q => q.section.toLowerCase() === 'setup' && q.required && q.type !== 'note')
         .forEach(q => {
           const val = answers[q.id];
-          if (val === undefined || val === null || val === '') missing.push(q.question);
+          const isEmpty = val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
+          if (isEmpty) missing.push(q.question);
         });
       return missing;
     }
@@ -357,7 +362,7 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
         const secQs = questions.filter(q => q.section === sec && q.required && q.type !== 'note');
         secQs.forEach(q => {
           const val = answers[q.id];
-          const isEmpty = val === undefined || val === null || val === '';
+          const isEmpty = val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
           if (isEmpty) missing.push(`${sec}: ${q.question}`);
         });
       });
@@ -369,7 +374,7 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
     return sectionQs
       .filter(q => {
         const val = answers[q.id];
-        return val === undefined || val === null || val === '';
+        return val === undefined || val === null || val === '' || (Array.isArray(val) && val.length === 0);
       })
       .map(q => q.question);
   };

@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS audit_questions (
     -- yes_no | text | number | photo | select | temperature | note
   options        TEXT,           -- JSON array, select only
   required       INTEGER DEFAULT 1,
+  allow_multiple INTEGER DEFAULT 0,  -- photo only: allow multiple uploads per question
   active         INTEGER DEFAULT 1,
   sort_order     INTEGER DEFAULT 0,
   created_at     TEXT DEFAULT (datetime('now'))

@@ -154,6 +154,7 @@ async function init() {
   try { db.run('ALTER TABLE audits ADD COLUMN audit_type_id TEXT'); } catch(e) {}
   try { db.run("ALTER TABLE audits ADD COLUMN question_answers TEXT DEFAULT '{}'"); } catch(e) {}
   try { db.run('ALTER TABLE audits ADD COLUMN auditor_name TEXT'); } catch(e) {}
+  try { db.run('ALTER TABLE audit_questions ADD COLUMN allow_multiple INTEGER DEFAULT 0'); } catch(e) {}
 
   // Seed
   const { seed } = require('./seed');

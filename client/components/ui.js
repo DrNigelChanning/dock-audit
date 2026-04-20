@@ -55,6 +55,93 @@ function PhotoUpload({ auditId, label, value, onChange, required }) {
   );
 }
 
+// ─── MultiPhotoUpload ───────────────────────────────────────────
+function MultiPhotoUpload({ auditId, label, value, onChange, required }) {
+  const inputRef = useRef();
+  const [uploading, setUploading] = useState(false);
+
+  // Normalize value → always an array of path strings
+  const photos = Array.isArray(value) ? value : (value ? [value] : []);
+
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      const newPaths = [];
+      for (const file of files) {
+        if (auditId) {
+          const { path } = await api.uploadPhoto(auditId, file);
+          newPaths.push(path);
+        } else {
+          // No audit ID yet — store blob URL temporarily
+          newPaths.push(URL.createObjectURL(file));
+        }
+      }
+      onChange([...photos, ...newPaths]);
+    } catch (err) {
+      alert('Photo upload failed: ' + err.message);
+    } finally {
+      setUploading(false);
+      // Reset input so the same file can be re-picked if needed
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  const removePhoto = (i, e) => {
+    e.stopPropagation();
+    const next = photos.slice();
+    next.splice(i, 1);
+    onChange(next);
+  };
+
+  return (
+    <div className="multi-photo">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        multiple
+        onChange={handleFiles}
+        style={{ display: 'none' }}
+      />
+      <div className="multi-photo-grid">
+        {photos.map((src, i) => (
+          <div key={i} className="multi-photo-tile">
+            <img src={src} alt={`${label} ${i + 1}`} />
+            <button
+              type="button"
+              className="multi-photo-remove"
+              onClick={(e) => removePhoto(i, e)}
+              aria-label="Remove photo"
+            >✕</button>
+          </div>
+        ))}
+        <div
+          className="multi-photo-add"
+          onClick={() => inputRef.current?.click()}
+        >
+          {uploading ? (
+            <div><div className="spinner" /><div className="photo-upload-label" style={{marginTop:8}}>Uploading...</div></div>
+          ) : (
+            <>
+              <div className="photo-upload-icon">📷</div>
+              <div className="photo-upload-label">
+                {photos.length === 0 ? label : '+ Add another'}
+                {required && photos.length === 0 && <span style={{color:'var(--red)'}}> *</span>}
+              </div>
+              <div className="form-hint" style={{marginTop:4,textAlign:'center'}}>
+                {photos.length === 0 ? 'Tap to take photos or choose from library' : `${photos.length} added`}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── YesNo Toggle ───────────────────────────────────────────────
 function YesNo({ value, onChange, yesLabel = 'Yes', noLabel = 'No' }) {
   return (
@@ -201,4 +288,4 @@ function StepProgress({ total, current }) {
   );
 }
 
-window.UI = { PhotoUpload, YesNo, ConditionSelect, SelectField, TextField, NumberField, Alert, Badge, StepProgress };
+window.UI = { PhotoUpload, MultiPhotoUpload, YesNo, ConditionSelect, SelectField, TextField, NumberField, Alert, Badge, StepProgress };

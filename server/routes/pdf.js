@@ -132,19 +132,24 @@ function buildHTML(audit) {
     }
   }
 
-  // Build photos from question_answers using photo-type question labels
+  // Build photos from question_answers using photo-type question labels.
+  // A single question may contribute multiple photos when allow_multiple is on
+  // (answer is an array of paths). Single-photo questions still work the same way.
   const seenPaths = new Set();
-  const photos = photoQuestions
-    .map(q => {
-      const val = questionAnswers[q.id];
-      if (!val || typeof val !== 'string') return null;
-      // Normalize: could be a path like /uploads/foo.jpg or just a filename
-      const src = getBase64Image(val);
-      if (!src || seenPaths.has(val)) return null;
-      seenPaths.add(val);
-      return { label: q.question, src };
-    })
-    .filter(Boolean);
+  const photos = [];
+  photoQuestions.forEach(q => {
+    const val = questionAnswers[q.id];
+    if (!val) return;
+    const paths = Array.isArray(val) ? val : [val];
+    paths.forEach((p, i) => {
+      if (!p || typeof p !== 'string' || seenPaths.has(p)) return;
+      const src = getBase64Image(p);
+      if (!src) return;
+      seenPaths.add(p);
+      const label = paths.length > 1 ? `${q.question} (${i + 1}/${paths.length})` : q.question;
+      photos.push({ label, src });
+    });
+  });
 
   const photoHtml = photos.length > 0 ? `
     <div style="page-break-before: always; padding: 40px;">
