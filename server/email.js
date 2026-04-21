@@ -113,7 +113,7 @@ async function sendAuditComplete(audit, lineItems = [], discrepancies = []) {
   try {
     // Recipient by audit type — inbound goes to Stephen, outbound to Ben
     let to = config.EMAIL.inbound_flags_to;
-    if (audit.type === 'outbound') to = config.EMAIL.outbound_flags_to;
+    if ((audit.type || '').toLowerCase() === 'outbound') to = config.EMAIL.outbound_flags_to;
 
     const subject = buildSubject(audit);
     const html    = buildHtml(audit, lineItems, discrepancies);
@@ -127,4 +127,4 @@ async function sendAuditComplete(audit, lineItems = [], discrepancies = []) {
   }
 }
 
-module.exports = { sendAuditComplete };
+module.exports = {

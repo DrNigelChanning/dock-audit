@@ -110,7 +110,7 @@ function DiscrepancyEditor({ discrepancy, index, auditId, onChange, onRemove }) 
 
 // ─── DynamicQuestion ─────────────────────────────────────────────────────────
 // Renders a single question of any type.
-function DynamicQuestion({ q, value, onChange, auditId, loadType }) {
+function DynamicQuestion({ q, value, onChange, auditId, loadType, isOutbound }) {
   // note type = instruction block, no answer
   if (q.type === 'note') {
     return (
@@ -151,8 +151,9 @@ function DynamicQuestion({ q, value, onChange, auditId, loadType }) {
   );
 
   if (q.type === 'temperature') {
-    const tempSpec = loadType === 'Frozen' ? 'frozen_inbound' : 'refrigerated_inbound';
-    const ranges = { frozen_inbound: 'below 32°F', refrigerated_inbound: '33–40°F' };
+    const typePrefix = isOutbound ? 'outbound' : 'inbound';
+    const tempSpec = loadType === 'Frozen' ? `frozen_${typePrefix}` : `refrigerated_${typePrefix}`;
+    const ranges = { frozen_inbound: 'below 32°F', refrigerated_inbound: '33–40°F', frozen_outbound: 'below 32°F', refrigerated_outbound: '33–42°F' };
     return (
       <div>
         <NumberField label={q.question} value={value} onChange={onChange} unit="°F" required={!!q.required} />
@@ -317,7 +318,8 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
       if (ql.includes('temperature (°f)') || ql.includes('interior temperature')) {
         patch.truck_temp_f = val;
         if (val !== '' && val !== null) {
-          const tempSpec = loadType === 'Frozen' ? 'frozen_inbound' : 'refrigerated_inbound';
+          const typePrefix = isOutbound ? 'outbound' : 'inbound';
+          const tempSpec = loadType === 'Frozen' ? `frozen_${typePrefix}` : `refrigerated_${typePrefix}`;
           patch.temp_in_range = tempInRange(val, tempSpec) ? 1 : 0;
         }
       }
@@ -466,6 +468,7 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
                 value={answers[q.id]}
                 onChange={val => setAnswer(q.id, val)}
                 auditId={auditId}
+                isOutbound={isOutbound}
               />
             ))}
           </div>
@@ -512,6 +515,7 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
             }}
             auditId={auditId}
             loadType={loadType}
+            isOutbound={isOutbound}
           />
         ))}
       </div>
@@ -709,15 +713,4 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
             <button className="btn btn-primary" onClick={handleNext} disabled={saving || loading} type="button" style={{ flex: 1 }}>
               {saving ? 'Saving…' : `Next: ${STEPS[step + 1]} →`}
             </button>
-          ) : (
-            <button className="btn btn-amber" onClick={handleSubmit} disabled={submitting} type="button" style={{ flex: 1 }}>
-              {submitting ? 'Submitting…' : '✅ Submit Audit'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-window.AuditForm = AuditForm;
+          ) :

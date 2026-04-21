@@ -215,7 +215,7 @@ function buildHTML(audit) {
 
     <table class="summary-grid">
       <tr>
-        <td class="card"><div class="label">SUPPLIER</div><div class="value">${audit.supplier || '—'}</div></td>
+        <td class="card"><div class="label">${isOutbound ? 'CUSTOMER' : 'SUPPLIER'}</div><div class="value">${isOutbound ? (audit.customer || '—') : (audit.supplier || '—')}</div></td>
         <td class="card"><div class="label">CARRIER</div><div class="value">${audit.carrier || '—'}</div></td>
         <td class="card"><div class="label">LOCATION</div><div class="value">${audit.location || '—'}</div></td>
       </tr>
@@ -321,7 +321,3 @@ router.get('/:id', async (req, res) => {
     res.sendFile(pdfPath);
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
-});
-module.exports = router;
-module.exports.generatePDF = generatePDF;

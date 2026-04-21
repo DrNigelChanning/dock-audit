@@ -273,7 +273,7 @@ router.post('/:id/submit', async (req, res) => {
     const photoQuestions = allQuestions.filter(q => q.type === 'photo');
 
     const dateStr     = dayjs(audit.audit_date).format('YYYY-MM-DD');
-    const cleanEntity = (audit.type === 'outbound' ? (audit.customer || 'Unknown') : (audit.supplier || 'Unknown')).replace(/\s+/g, '-');
+    const cleanEntity = ((audit.type || '').toLowerCase() === 'outbound' ? (audit.customer || 'Unknown') : (audit.supplier || 'Unknown')).replace(/\s+/g, '-');
     const refNum      = audit.po_number || audit.so_number || '0000';
     const typeSlug    = (audit.audit_type_name || audit.type || 'audit').toUpperCase().replace(/\s+/g, '-');
     const pdfFilename = `${typeSlug}_${refNum}_${cleanEntity}_${dateStr}.pdf`;
@@ -316,15 +316,12 @@ router.post('/:id/submit', async (req, res) => {
     sendAuditComplete(submittedAudit, lineItems, discrepancies)
       .catch(err => console.error('Email Error:', err));
 
-    // Google Sheets audit log — fire and forget
-    const { appendAuditRow } = require('../sheets');
+    // Google Sheets — fire and forget
+    const { appendAuditRow, writeToSheet } = require('../sheets');
+
+    // Audit log: always append a row for every audit type
     appendAuditRow(submittedAudit)
-      .catch(err => console.error('Sheets Error:', err));
+      .catch(err => console.error('Sheets appendAuditRow Error:', err));
 
-    res.json({ message: 'Audit submitted', pdf_filename: pdfFilename });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-module.exports = router;
+    // Open PO tracker: update matching PO row for inbound audits
+    if (
