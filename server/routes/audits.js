@@ -324,4 +324,27 @@ router.post('/:id/submit', async (req, res) => {
       .catch(err => console.error('Sheets appendAuditRow Error:', err));
 
     // Open PO tracker: update matching PO row for inbound audits
-    if (
+    if (submittedAudit.type && submittedAudit.type.toLowerCase() === 'inbound' && submittedAudit.po_number) {
+      writeToSheet(submittedAudit, lineItems)
+        .catch(err => console.error('Sheets writeToSheet Error:', err));
+    }
+
+    res.json({ message: 'Audit submitted', pdf_filename: pdfFilename });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
+submittedAudit.type && submittedAudit.type.toLowerCase() === 'inbound' && submittedAudit.po_number) {
+      writeToSheet(submittedAudit, lineItems)
+        .catch(err => console.error('Sheets writeToSheet Error:', err));
+    }
+
+    res.json({ message: 'Audit submitted', pdf_filename: pdfFilename });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+module.exports = router;
