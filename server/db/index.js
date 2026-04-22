@@ -241,6 +241,22 @@ async function init() {
   try { db.run('ALTER TABLE audits ADD COLUMN auditor_name TEXT'); } catch(e) {}
   try { db.run('ALTER TABLE audit_questions ADD COLUMN allow_multiple INTEGER DEFAULT 0'); } catch(e) {}
 
+  // Migration: add PO number question to Outbound audit type if missing
+  try {
+    const outboundResult = db.exec("SELECT id FROM audit_types WHERE name='Outbound'");
+    if (outboundResult[0]?.values?.length) {
+      const outboundId = outboundResult[0].values[0][0];
+      const hasPoQ = db.exec(`SELECT COUNT(*) as c FROM audit_questions WHERE audit_type_id='${outboundId}' AND question='PO number'`);
+      const count = hasPoQ[0]?.values?.[0]?.[0] ?? 0;
+      if (count === 0) {
+        // Shift existing setup questions at sort_order >= 1 up by one to make room
+        db.run(`UPDATE audit_questions SET sort_order = sort_order + 1 WHERE audit_type_id='${outboundId}' AND section='Setup' AND sort_order >= 1`);
+        db.run(`INSERT INTO audit_questions (id, audit_type_id, section, question, type, options, required, active, sort_order) VALUES ('outbound-po-number-q1', '${outboundId}', 'Setup', 'PO number', 'text', NULL, 0, 1, 1)`);
+        console.log('🔧 Migration: added PO number question to Outbound audit type');
+      }
+    }
+  } catch(e) { console.warn('Migration outbound PO question:', e.message?.substring(0, 80)); }
+
   // Seed
   const { seed } = require('./seed');
   seed(wrapper);

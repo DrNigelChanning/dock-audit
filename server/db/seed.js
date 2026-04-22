@@ -36,8 +36,9 @@ const QUESTIONS = {
   ],
   Outbound: [
     { section: 'Setup',             question: 'SO number',                               type: 'text',        required: 1, sort_order: 0 },
-    { section: 'Setup',             question: 'Customer', type: 'select', options: JSON.stringify(["Costco","Trader Joe's","Walmart","Kroger","Other"]), required: 1, sort_order: 1 },
-    { section: 'Setup',             question: 'Carrier',                                  type: 'text',        required: 1, sort_order: 2 },
+    { section: 'Setup',             question: 'PO number',                               type: 'text',        required: 0, sort_order: 1 },
+    { section: 'Setup',             question: 'Customer', type: 'select', options: JSON.stringify(["Costco","Trader Joe's","Walmart","Kroger","Other"]), required: 1, sort_order: 2 },
+    { section: 'Setup',             question: 'Carrier',                                  type: 'text',        required: 1, sort_order: 3 },
     { section: 'Truck Inspection',  question: 'Load type', type: 'select', options: JSON.stringify(['Ambient','Reefer','Frozen']), required: 1, sort_order: 0 },
     { section: 'Truck Inspection',  question: 'Truck / Trailer number',                   type: 'text',        required: 1, sort_order: 1 },
     { section: 'Truck Inspection',  question: 'Seal number',                               type: 'text',        required: 1, sort_order: 2 },

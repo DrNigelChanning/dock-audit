@@ -29,19 +29,20 @@ async function sendViaSendGrid(to, cc, subject, html) {
 }
 
 function buildSubject(audit) {
-  const type = audit.audit_type_name || audit.type || 'Audit';
-  const ref  = audit.po_number || audit.so_number || '—';
+  const type  = audit.audit_type_name || audit.type || 'Audit';
+  const isOut = (audit.type || '').toLowerCase() === 'outbound';
+  const ref   = isOut ? (audit.so_number || audit.po_number || '—') : (audit.po_number || '—');
   const entity = audit.supplier || audit.customer || '—';
-  const flag = audit.has_discrepancy ? '⚠️ DISCREPANCY — ' : '✅ ';
+  const flag  = audit.has_discrepancy ? '⚠️ DISCREPANCY — ' : '✅ ';
   return `${flag}${type} Audit: ${entity} · ${ref} · ${dayjs(audit.audit_date).format('M/D/YYYY')}`;
 }
 
 function buildHtml(audit, lineItems, discrepancies) {
-  const type   = audit.audit_type_name || audit.type || 'Audit';
-  const date   = dayjs(audit.audit_date).format('MMMM D, YYYY');
-  const entity = audit.supplier || audit.customer || '—';
-  const ref    = audit.po_number ? `PO #${audit.po_number}` : audit.so_number ? `SO #${audit.so_number}` : '—';
-  const qScore = ['—', 'Fail (1)', 'Pass w/ Issues (2)', 'Pass (3)'][audit.quality_score] || '—';
+  const type    = audit.audit_type_name || audit.type || 'Audit';
+  const isOut   = (audit.type || '').toLowerCase() === 'outbound';
+  const date    = dayjs(audit.audit_date).format('MMMM D, YYYY');
+  const entity  = audit.supplier || audit.customer || '—';
+  const qScore  = ['—', 'Fail (1)', 'Pass w/ Issues (2)', 'Pass (3)'][audit.quality_score] || '—';
   const color  = audit.has_discrepancy ? '#c53030' : '#276749';
   const statusLabel = audit.has_discrepancy ? '⚠️ Discrepancy Flagged' : '✅ Clean';
 
@@ -81,8 +82,12 @@ function buildHtml(audit, lineItems, discrepancies) {
       <table style="width:100%;font-size:14px;border-collapse:collapse;">
         <tr><td style="padding:5px 0;color:#718096;width:140px;">Date</td><td style="padding:5px 0;font-weight:500;">${date}</td></tr>
         <tr><td style="padding:5px 0;color:#718096;">Auditor</td><td style="padding:5px 0;font-weight:500;">${audit.auditor_name || '—'}</td></tr>
-        <tr><td style="padding:5px 0;color:#718096;">${audit.supplier ? 'Supplier' : 'Customer'}</td><td style="padding:5px 0;font-weight:500;">${entity}</td></tr>
-        <tr><td style="padding:5px 0;color:#718096;">Reference</td><td style="padding:5px 0;font-weight:500;">${ref}</td></tr>
+        <tr><td style="padding:5px 0;color:#718096;">${isOut ? 'Customer' : 'Supplier'}</td><td style="padding:5px 0;font-weight:500;">${entity}</td></tr>
+        ${isOut
+          ? `<tr><td style="padding:5px 0;color:#718096;">SO #</td><td style="padding:5px 0;font-weight:500;">${audit.so_number || '—'}</td></tr>
+        <tr><td style="padding:5px 0;color:#718096;">PO #</td><td style="padding:5px 0;font-weight:500;">${audit.po_number || '—'}</td></tr>`
+          : `<tr><td style="padding:5px 0;color:#718096;">PO #</td><td style="padding:5px 0;font-weight:500;">${audit.po_number || '—'}</td></tr>`
+        }
         <tr><td style="padding:5px 0;color:#718096;">Carrier</td><td style="padding:5px 0;font-weight:500;">${audit.carrier || '—'}</td></tr>
         ${audit.item_name ? `<tr><td style="padding:5px 0;color:#718096;">Item</td><td style="padding:5px 0;font-weight:500;">${audit.item_name}</td></tr>` : ''}
         ${audit.qty_expected != null ? `<tr><td style="padding:5px 0;color:#718096;">Qty Expected</td><td style="padding:5px 0;font-weight:500;">${audit.qty_expected}</td></tr>` : ''}
