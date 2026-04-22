@@ -251,16 +251,25 @@ async function getOpenPOs() {
   }
 }
 
-// ─── Append a row to the Audit Log sheet ─────────────────────────────────────
-// Creates a header row on first write, then appends one row per submitted audit.
+// ─── Append a row to the typed Audit Log tabs ────────────────────────────────
+// Inbound audits → INBOUND_LOG_TAB (default "Inbound Log")
+// Outbound audits → OUTBOUND_LOG_TAB (default "Outbound Log")
+// Each tab is auto-created with its own header row on first write.
 
-const AUDIT_LOG_HEADERS = [
-  'Submitted At', 'Audit Type', 'Auditor', 'Supplier / Customer',
-  'PO / SO #', 'Carrier', 'Item', 'Qty Expected', 'Qty Received',
-  'Temp (°F)', 'Temp OK?', 'Quality Score', 'Has Discrepancy', 'Notes',
+const INBOUND_HEADERS = [
+  'Submitted At', 'Auditor', 'PO #', 'Supplier', 'Item(s)',
+  'Qty Expected', 'Qty Received', 'Load Type', 'Temp (°F)',
+  'Quality Score', 'Has Discrepancy', 'Notes',
 ];
 
-async function appendAuditRow(audit) {
+const OUTBOUND_HEADERS = [
+  'Submitted At', 'Auditor', 'Customer', 'SO #', 'PO #',
+  'Carrier', 'Trailer #', 'Seal #', 'Load Type', 'Truck Temp (°F)',
+  'SKU(s)', 'Qty Ordered', 'Qty Shipped',
+  'Quality Score', 'Discrepancy', 'Notes',
+];
+
+async function appendAuditRow(audit, lineItems = []) {
   if (!config.SHEETS.enabled) {
     console.log('ℹ️  Sheets disabled — skipping audit log append');
     return { skipped: true };
@@ -272,13 +281,17 @@ async function appendAuditRow(audit) {
     return { error: 'AUDIT_LOG_SHEET_ID not configured' };
   }
 
-  try {
-    const auth = getAuth();
-    const sheets = google.sheets({ version: 'v4', auth });
-    const tabName = process.env.AUDIT_LOG_TAB || 'Audit Log';
-    const range = `'${tabName}'!A1:N1`;
+  const isOutbound = (audit.type || '').toLowerCase() === 'outbound';
+  const tabName    = isOutbound
+    ? (process.env.OUTBOUND_LOG_TAB || 'Outbound Log')
+    : (process.env.INBOUND_LOG_TAB  || 'Inbound Log');
+  const headers    = isOutbound ? OUTBOUND_HEADERS : INBOUND_HEADERS;
 
-    // Check if headers exist — write them if the sheet is empty
+  try {
+    const auth   = getAuth();
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Auto-create headers if this tab has never been written to
     const check = await sheets.spreadsheets.values.get({
       spreadsheetId: sheetId,
       range: `'${tabName}'!A1`,
@@ -288,27 +301,66 @@ async function appendAuditRow(audit) {
         spreadsheetId: sheetId,
         range: `'${tabName}'!A1`,
         valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [AUDIT_LOG_HEADERS] },
+        requestBody: { values: [headers] },
       });
-      console.log('📊 Audit log headers written');
+      console.log(`📊 ${tabName} headers written`);
     }
 
-    const qualityLabels = ['', 'Fail', 'Pass w/ Issues', 'Pass'];
-    const row = [
-      audit.submitted_at ? dayjs(audit.submitted_at).format('M/D/YYYY h:mm A') : dayjs().format('M/D/YYYY h:mm A'),
-      audit.audit_type_name || audit.type || '—',
-      audit.auditor_name || '—',
-      audit.supplier || audit.customer || '—',
-      audit.po_number || audit.so_number || '—',
-      audit.carrier || '—',
-      audit.item_name || '—',
-      audit.qty_expected != null ? audit.qty_expected : '—',
-      audit.qty_received != null ? audit.qty_received : '—',
-      audit.truck_temp_f != null ? audit.truck_temp_f : '—',
-      audit.truck_temp_f != null ? (audit.temp_in_range ? 'Yes' : 'No') : '—',
-      qualityLabels[audit.quality_score] || '—',
-      audit.has_discrepancy ? 'Yes' : 'No',
-      audit.notes || '',
+    // ── Shared helpers ──────────────────────────────────────────────────────
+    const qualityLabels = { 1: 'Fail', 2: 'Pass w/ Issues', 3: 'Pass' };
+    const submittedAt   = dayjs(audit.submitted_at || undefined).format('M/D/YYYY h:mm A');
+    const loadType      = audit.load_type || (audit.is_refrigerated ? 'Refrigerated' : 'Ambient');
+    const temp          = audit.truck_temp_f != null ? audit.truck_temp_f : '—';
+    const qualScore     = qualityLabels[audit.quality_score] || '—';
+    const discrepancy   = audit.has_discrepancy ? 'Yes' : 'No';
+    const notes         = audit.notes || '';
+
+    // Build item / qty strings — join multiple line items with " | "
+    const itemNames  = lineItems.length > 0
+      ? lineItems.map(li => li.item_name || '—').join(' | ')
+      : (audit.item_name || '—');
+    const qtyExp     = lineItems.length > 0
+      ? lineItems.map(li => li.expected_qty ?? '—').join(' | ')
+      : (audit.qty_expected != null ? audit.qty_expected : '—');
+    const qtyAct     = lineItems.length > 0
+      ? lineItems.map(li => li.actual_qty ?? '—').join(' | ')
+      : (audit.qty_received != null ? audit.qty_received : '—');
+    // Outbound SKUs: prefer part_number, fall back to item_name
+    const skus       = lineItems.length > 0
+      ? lineItems.map(li => li.part_number || li.item_name || '—').join(' | ')
+      : (audit.item_name || '—');
+
+    // ── Build the row ───────────────────────────────────────────────────────
+    const row = isOutbound ? [
+      submittedAt,
+      audit.auditor_name    || '—',
+      audit.customer        || '—',
+      audit.so_number       || '—',
+      audit.po_number       || '—',
+      audit.carrier         || '—',
+      audit.trailer_number  || '—',
+      audit.seal_number     || '—',
+      loadType,
+      temp,
+      skus,
+      qtyExp,
+      qtyAct,
+      qualScore,
+      discrepancy,
+      notes,
+    ] : [
+      submittedAt,
+      audit.auditor_name    || '—',
+      audit.po_number       || '—',
+      audit.supplier        || '—',
+      itemNames,
+      qtyExp,
+      qtyAct,
+      loadType,
+      temp,
+      qualScore,
+      discrepancy,
+      notes,
     ];
 
     await sheets.spreadsheets.values.append({
@@ -319,7 +371,7 @@ async function appendAuditRow(audit) {
       requestBody: { values: [row] },
     });
 
-    console.log(`✅ Audit log row appended (${audit.audit_type_name || audit.type} — ${audit.po_number || audit.so_number || 'no ref'})`);
+    console.log(`✅ ${tabName} row appended (${audit.audit_type_name || audit.type} — ${audit.po_number || audit.so_number || 'no ref'})`);
     return { success: true };
   } catch (err) {
     console.error('❌ Audit log append error:', err.message);

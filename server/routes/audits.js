@@ -303,6 +303,7 @@ router.post('/:id/submit', async (req, res) => {
       item_name:    getQA(['item', 'ingredient', 'sku']),
       qty_expected: getQA(['expected']),
       qty_received: getQA(['actual']),
+      load_type:    getQA(['load type']),
     };
 
     // PDF — fire and forget
@@ -319,8 +320,8 @@ router.post('/:id/submit', async (req, res) => {
     // Google Sheets — fire and forget
     const { appendAuditRow, writeToSheet } = require('../sheets');
 
-    // Audit log: always append a row for every audit type
-    appendAuditRow(submittedAudit)
+    // Audit log: always append a row for every audit type (typed tabs)
+    appendAuditRow(submittedAudit, lineItems)
       .catch(err => console.error('Sheets appendAuditRow Error:', err));
 
     // Open PO tracker: update matching PO row for inbound audits
