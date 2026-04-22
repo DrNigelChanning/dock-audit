@@ -78,8 +78,9 @@ function AuditHistory({ onNewAudit, onResumeDraft }) {
               onChange={e => setFilters(f => ({ ...f, type: e.target.value }))}
             >
               <option value="">All types</option>
-              <option value="inbound">📥 Inbound</option>
-              <option value="outbound">🚢 Outbound</option>
+              <option value="Inbound">📥 Inbound</option>
+              <option value="Outbound">🚢 Outbound</option>
+              <option value="Case Pack">📦 Case Pack</option>
             </select>
           </div>
           <div className="select-wrapper">
