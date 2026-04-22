@@ -127,4 +127,4 @@ async function sendAuditComplete(audit, lineItems = [], discrepancies = []) {
   }
 }
 
-module.exports = {
+module.exports = { sendAuditComplete };

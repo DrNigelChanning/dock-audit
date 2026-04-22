@@ -324,7 +324,4 @@ router.get('/:id', async (req, res) => {
   }
 });
 module.exports = router;
-module.exports.generatePDF = generatePDF;  }
-});
-module.exports = router;
 module.exports.generatePDF = generatePDF;

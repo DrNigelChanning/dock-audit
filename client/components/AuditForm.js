@@ -713,4 +713,15 @@ function AuditForm({ auditType, teamMembers, draftAudit, onComplete, onCancel })
             <button className="btn btn-primary" onClick={handleNext} disabled={saving || loading} type="button" style={{ flex: 1 }}>
               {saving ? 'Saving…' : `Next: ${STEPS[step + 1]} →`}
             </button>
-          ) :
+          ) : (
+            <button className="btn btn-amber" onClick={handleSubmit} disabled={submitting} type="button" style={{ flex: 1 }}>
+              {submitting ? 'Submitting…' : '✅ Submit Audit'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+window.AuditForm = AuditForm;
