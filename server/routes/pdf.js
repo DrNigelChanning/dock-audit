@@ -321,3 +321,10 @@ router.get('/:id', async (req, res) => {
     res.sendFile(pdfPath);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+module.exports = router;
+module.exports.generatePDF = generatePDF;  }
+});
+module.exports = router;
+module.exports.generatePDF = generatePDF;
