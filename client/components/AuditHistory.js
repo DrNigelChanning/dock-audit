@@ -48,6 +48,33 @@ function AuditHistory({ onNewAudit, onResumeDraft }) {
     }
   };
 
+  const deleteSubmitted = async (audit, e) => {
+    e.stopPropagation();
+    const typeName = audit.audit_type_name || audit.type;
+    const ref = audit.po_number || audit.so_number || audit.id.slice(0, 8);
+    if (!window.confirm(`Delete submitted ${typeName} audit (${ref})? This is permanent.`)) return;
+    const password = window.prompt('Admin password required:');
+    if (!password) return;
+    setDeletingId(audit.id);
+    try {
+      await fetch(`/api/audits/${audit.id}`, {
+        method: 'DELETE',
+        headers: { 'x-admin-password': password },
+      }).then(async r => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.error || `HTTP ${r.status}`);
+        }
+      });
+      setAudits(prev => prev.filter(a => a.id !== audit.id));
+      if (selected === audit.id) { setSelected(null); setDetail(null); }
+    } catch (err) {
+      alert(err.message === 'Invalid admin password' ? 'Wrong password.' : 'Delete failed: ' + err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   const loadDetail = async (id) => {
     setSelected(id);
     setLoadingDetail(true);
@@ -165,10 +192,18 @@ function AuditHistory({ onNewAudit, onResumeDraft }) {
                         {deletingId === audit.id ? '…' : '🗑'}
                       </button>
                     </div>
-                  ) : audit.has_discrepancy ? (
-                    <Badge color="red">⚠️ Flag</Badge>
                   ) : audit.status === 'submitted' ? (
-                    <Badge color="green">✅ Clean</Badge>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      {audit.has_discrepancy ? <Badge color="red">⚠️ Flag</Badge> : <Badge color="green">✅ Clean</Badge>}
+                      <button
+                        className="btn btn-sm"
+                        onClick={e => deleteSubmitted(audit, e)}
+                        disabled={deletingId === audit.id}
+                        style={{ fontSize: 10, padding: '3px 8px', background: 'transparent', color: 'var(--gray-400)', border: '1px solid var(--gray-200)', borderRadius: 4, cursor: 'pointer' }}
+                      >
+                        {deletingId === audit.id ? '…' : '🗑'}
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               </div>

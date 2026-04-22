@@ -218,7 +218,15 @@ router.delete('/:id', async (req, res) => {
     const db = await getDB;
     const audit = db.prepare('SELECT * FROM audits WHERE id = ?').get(req.params.id);
     if (!audit) return res.status(404).json({ error: 'Audit not found' });
-    if (audit.status === 'submitted') return res.status(400).json({ error: 'Submitted audits cannot be deleted' });
+
+    if (audit.status === 'submitted') {
+      const adminPassword = process.env.ADMIN_PASSWORD;
+      if (!adminPassword) return res.status(403).json({ error: 'Admin deletes not configured' });
+      const provided = req.headers['x-admin-password'];
+      if (!provided || provided !== adminPassword) {
+        return res.status(401).json({ error: 'Invalid admin password' });
+      }
+    }
 
     // Cascade delete line items, discrepancies, then the audit
     db.prepare('DELETE FROM audit_discrepancies WHERE audit_id = ?').run(req.params.id);
